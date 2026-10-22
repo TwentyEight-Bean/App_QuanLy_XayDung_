@@ -107,13 +107,105 @@ function isInSelectedPeriod(dateStr) {
   return dateStr >= week.start && dateStr <= week.end;
 }
 
+// ================= HÀM PARSE KHÓA LƯƠNG CŨ V1 CHÍNH XÁC =================
+// V1 format: ${projectId}_${workerId}_${YYYY-MM} (ví dụ PRJ_NINH_KIEU_W_LEG_01_2026-10)
+// Tuyệt đối không giả định ID không chứa dấu '_'
+function parseLegacyPayrollKey(key, projects = [], workers = [], defaultPeriod = "2026-10") {
+  if (!key || typeof key !== "string") {
+    return { projectId: projects[0]?.id || "PRJ_UNKNOWN", workerId: "W_UNKNOWN", periodId: defaultPeriod };
+  }
+
+  // 1. Tách phần kỳ thời gian ở đuôi: _YYYY-MM
+  const periodMatch = key.match(/_(\d{4}-\d{2})$/);
+  let periodId = defaultPeriod;
+  let prefix = key;
+  if (periodMatch) {
+    periodId = periodMatch[1];
+    prefix = key.slice(0, -periodMatch[0].length);
+  }
+
+  // 2. Tìm kiếm chính xác cặp projectId và workerId có thật
+  // Sắp xếp ID dài trước để ưu tiên khớp chuỗi dài nhất tránh nhầm lẫn prefix/suffix
+  const sortedProjects = [...projects].sort((a, b) => (b.id?.length || 0) - (a.id?.length || 0));
+  const sortedWorkers = [...workers].sort((a, b) => (b.id?.length || 0) - (a.id?.length || 0));
+
+  let matchedProj = null;
+  let matchedWorker = null;
+
+  // Thử khớp chính xác: prefix === `${p.id}_${w.id}`
+  for (const p of sortedProjects) {
+    for (const w of sortedWorkers) {
+      if (prefix === `${p.id}_${w.id}`) {
+        matchedProj = p.id;
+        matchedWorker = w.id;
+        break;
+      }
+    }
+    if (matchedWorker) break;
+  }
+
+  // Nếu chưa tìm thấy, thử xem prefix có bắt đầu bằng `${p.id}_` không
+  if (!matchedWorker) {
+    for (const p of sortedProjects) {
+      if (prefix.startsWith(p.id + "_")) {
+        const rem = prefix.slice(p.id.length + 1);
+        const w = sortedWorkers.find(x => x.id === rem);
+        matchedProj = p.id;
+        matchedWorker = w ? w.id : rem;
+        break;
+      }
+    }
+  }
+
+  // Nếu chưa tìm thấy, thử xem prefix có kết thúc bằng `_${w.id}` không
+  if (!matchedWorker) {
+    for (const w of sortedWorkers) {
+      if (prefix.endsWith("_" + w.id)) {
+        const rem = prefix.slice(0, -(w.id.length + 1));
+        const p = sortedProjects.find(x => x.id === rem);
+        matchedProj = p ? p.id : rem;
+        matchedWorker = w.id;
+        break;
+      }
+    }
+  }
+
+  // Nếu prefix chỉ chứa workerId (không có projectId)
+  if (!matchedWorker) {
+    const w = sortedWorkers.find(x => x.id === prefix);
+    if (w) {
+      matchedWorker = w.id;
+      matchedProj = w.projectId || (sortedProjects[0]?.id || "PRJ_NINH_KIEU");
+    }
+  }
+
+  // Fallback an toàn nếu cả projectId và workerId đều chưa từng khai báo
+  if (!matchedWorker) {
+    const idx = prefix.indexOf("_");
+    if (idx > 0) {
+      matchedProj = prefix.slice(0, idx);
+      matchedWorker = prefix.slice(idx + 1);
+    } else {
+      matchedWorker = prefix;
+      matchedProj = sortedProjects[0]?.id || "PRJ_NINH_KIEU";
+    }
+  }
+
+  return {
+    projectId: matchedProj || (sortedProjects[0]?.id || "PRJ_NINH_KIEU"),
+    workerId: matchedWorker,
+    periodId
+  };
+}
+
 // ================= DỮ LIỆU MẪU KHỞI TẠO & MIGRATION =================
 function createDefaultStore() {
   const today = getTodayVN();
   const currentMonth = today.slice(0, 7);
   return {
     version: 2,
-    revision: 1,
+    revision: 0,
+    isDefaultStore: true,
     updatedAt: new Date().toISOString(),
     settings: {
       selectedProjectId: "PRJ_NINH_KIEU", // "ALL" hoặc ID công trình
@@ -151,12 +243,54 @@ function createDefaultStore() {
       }
     ],
     workers: [
-      { id: "W01", name: "Nguyễn Văn Ba", role: "Thợ cả (Thợ chính)", dailyRate: 500000, projectId: "PRJ_NINH_KIEU" },
-      { id: "W02", name: "Trần Văn Tư", role: "Thợ xây chính", dailyRate: 450000, projectId: "PRJ_NINH_KIEU" },
-      { id: "W03", name: "Lê Hoàng Nam", role: "Thợ sắt / Cốt pha", dailyRate: 450000, projectId: "PRJ_NINH_KIEU" },
-      { id: "W04", name: "Phạm Văn Út", role: "Thợ hồ phụ", dailyRate: 330000, projectId: "PRJ_NINH_KIEU" },
-      { id: "W05", name: "Võ Minh Tâm", role: "Thợ điện nước", dailyRate: 480000, projectId: "PRJ_CAI_RANG" },
-      { id: "W06", name: "Đặng Văn Hùng", role: "Thợ hồ phụ", dailyRate: 340000, projectId: "PRJ_CAI_RANG" }
+      {
+        id: "W01",
+        name: "Nguyễn Văn Ba",
+        role: "Thợ cả (Thợ chính)",
+        dailyRate: 500000,
+        projectId: "PRJ_NINH_KIEU",
+        assignments: [{ projectId: "PRJ_NINH_KIEU", startDate: "2025-01-01", endDate: null }]
+      },
+      {
+        id: "W02",
+        name: "Trần Văn Tư",
+        role: "Thợ xây chính",
+        dailyRate: 450000,
+        projectId: "PRJ_NINH_KIEU",
+        assignments: [{ projectId: "PRJ_NINH_KIEU", startDate: "2025-01-01", endDate: null }]
+      },
+      {
+        id: "W03",
+        name: "Lê Hoàng Nam",
+        role: "Thợ sắt / Cốt pha",
+        dailyRate: 450000,
+        projectId: "PRJ_NINH_KIEU",
+        assignments: [{ projectId: "PRJ_NINH_KIEU", startDate: "2025-01-01", endDate: null }]
+      },
+      {
+        id: "W04",
+        name: "Phạm Văn Út",
+        role: "Thợ hồ phụ",
+        dailyRate: 330000,
+        projectId: "PRJ_NINH_KIEU",
+        assignments: [{ projectId: "PRJ_NINH_KIEU", startDate: "2025-01-01", endDate: null }]
+      },
+      {
+        id: "W05",
+        name: "Võ Minh Tâm",
+        role: "Thợ điện nước",
+        dailyRate: 480000,
+        projectId: "PRJ_CAI_RANG",
+        assignments: [{ projectId: "PRJ_CAI_RANG", startDate: "2025-01-01", endDate: null }]
+      },
+      {
+        id: "W06",
+        name: "Đặng Văn Hùng",
+        role: "Thợ hồ phụ",
+        dailyRate: 340000,
+        projectId: "PRJ_CAI_RANG",
+        assignments: [{ projectId: "PRJ_CAI_RANG", startDate: "2025-01-01", endDate: null }]
+      }
     ],
     attendance: [
       { id: "ATT_1", projectId: "PRJ_NINH_KIEU", workerId: "W01", date: today, units: 1.0, rateSnapshot: 500000 },
@@ -258,6 +392,23 @@ function migrateStore(rawStore) {
   if (!rawStore || typeof rawStore !== "object") return createDefaultStore();
   const d = { ...createDefaultStore(), ...rawStore };
 
+  // Phân biệt store mặc định chưa sửa đổi với dữ liệu người dùng thật
+  const hasUserRecords = (rawStore.projects && rawStore.projects.length > 0) ||
+                         (rawStore.workers && rawStore.workers.length > 0) ||
+                         (rawStore.attendance && rawStore.attendance.length > 0) ||
+                         (rawStore.advances && rawStore.advances.length > 0) ||
+                         (rawStore.cashTransactions && rawStore.cashTransactions.length > 0) ||
+                         (rawStore.materials && rawStore.materials.length > 0) ||
+                         (rawStore.payrollStatus && Object.keys(rawStore.payrollStatus).length > 0);
+
+  if (rawStore.isDefaultStore === true && (Number(rawStore.revision) === 0 || !rawStore.revision)) {
+    d.isDefaultStore = true;
+    d.revision = 0;
+  } else {
+    d.isDefaultStore = false;
+    d.revision = Number(rawStore.revision) || (hasUserRecords ? 1 : 0);
+  }
+
   // 1. Đảm bảo mảng tồn tại
   if (!Array.isArray(d.projects)) d.projects = [];
   if (!Array.isArray(d.workers)) d.workers = [];
@@ -269,12 +420,29 @@ function migrateStore(rawStore) {
   if (!Array.isArray(d.auditLogs)) d.auditLogs = [];
 
   // Metadata phiên bản & timestamp
-  d.revision = Number(d.revision) || 1;
   d.updatedAt = d.updatedAt || new Date().toISOString();
   if (!d.settings) d.settings = {};
   d.settings.payrollPeriod = d.settings.payrollPeriod || d.settings.selectedMonth || getTodayVN().slice(0, 7);
 
-  // 2. Migration vật tư: chuyển đổi cấu trúc cũ sang có payments
+  // 2. Bảo toàn lịch sử phân công thợ (assignments)
+  d.workers = d.workers.map(w => {
+    let assignments = Array.isArray(w.assignments) ? [...w.assignments] : [];
+    if (assignments.length === 0 && w.projectId) {
+      assignments = [
+        {
+          projectId: w.projectId,
+          startDate: "2025-01-01",
+          endDate: null
+        }
+      ];
+    }
+    return {
+      ...w,
+      assignments
+    };
+  });
+
+  // 3. Migration vật tư: chuyển đổi cấu trúc cũ sang có payments
   d.materials = d.materials.map(m => {
     const qty = Number(m.qty) || 1;
     const price = Number(m.unitPrice) || 0;
@@ -306,7 +474,7 @@ function migrateStore(rawStore) {
     };
   });
 
-  // 3. Migration chấm công: đảm bảo rateSnapshot luôn tồn tại
+  // 4. Migration chấm công: đảm bảo rateSnapshot luôn tồn tại
   d.attendance = d.attendance.map(a => {
     if (a.rateSnapshot == null) {
       const w = d.workers.find(x => x.id === a.workerId);
@@ -315,7 +483,7 @@ function migrateStore(rawStore) {
     return a;
   });
 
-  // 4. Migration tạm ứng: bảo toàn chứng từ S-Pen & đối soát
+  // 5. Migration tạm ứng: bảo toàn chứng từ S-Pen & đối soát
   d.advances = d.advances.map(a => {
     const isSigned = a.signedStatus === "signed";
     return {
@@ -328,28 +496,30 @@ function migrateStore(rawStore) {
     };
   });
 
-  // 5. Migration dữ liệu lương cũ: payrollStatus sang wagePayments (tuyệt đối không để phiếu đã trả thành chưa trả)
+  // 6. Migration dữ liệu lương cũ: payrollStatus sang wagePayments
+  // Parse chính xác dựa trên danh sách projectId và workerId có thật
+  // Tuyệt đối không tạo chứng từ tiền mặt giả 0 đ vào sổ quỹ
   if (rawStore && rawStore.payrollStatus && typeof rawStore.payrollStatus === "object") {
     Object.entries(rawStore.payrollStatus).forEach(([key, status]) => {
       if (status === "paid") {
-        // Tách workerId và periodId (ví dụ: "W_LEG_2_2026-09" -> workerId="W_LEG_2", periodId="2026-09")
-        const match = key.match(/^(.*)_(\d{4}-\d{2})$/);
-        const wId = match ? match[1] : key;
-        const pId = match ? match[2] : (d.settings.payrollPeriod || "2026-10");
-        const w = d.workers.find(x => x.id === wId);
-        const prjId = w ? w.projectId : (d.projects[0]?.id || "PRJ_NINH_KIEU");
-        const exists = d.wagePayments.some(wp => wp.workerId === wId && wp.periodId === pId);
+        const parsed = parseLegacyPayrollKey(key, d.projects, d.workers, d.settings.payrollPeriod || "2026-10");
+        const exists = d.wagePayments.some(
+          wp => wp.workerId === parsed.workerId && wp.periodId === parsed.periodId && wp.projectId === parsed.projectId
+        );
         if (!exists) {
           d.wagePayments.push({
             id: "WPAY_MIG_" + key,
-            projectId: prjId,
-            workerId: wId,
-            periodId: pId,
-            grossWage: 0,
-            advanceDeducted: 0,
-            netPaid: 0,
+            projectId: parsed.projectId,
+            workerId: parsed.workerId,
+            periodId: parsed.periodId,
+            grossWage: null,
+            advanceDeducted: null,
+            netPaid: null, // Không tạo chứng từ 0 đ giả trong sổ quỹ
             paidDate: d.settings.selectedDate || getTodayVN(),
-            note: "Đã chi trả (Di chuyển từ payrollStatus phiên bản cũ)"
+            status: "paid",
+            isLegacyMigration: true,
+            requiresHistoricalReconciliation: true,
+            note: "Đã chi trả ở phiên bản V1 (Cần đối soát lịch sử số tiền thực chi)"
           });
         }
       }
@@ -360,18 +530,24 @@ function migrateStore(rawStore) {
   d.workers.forEach(w => {
     if (w.payrollStatus === "paid" || w.paidStatus === "paid") {
       const pId = d.settings.payrollPeriod || "2026-10";
-      const exists = d.wagePayments.some(wp => wp.workerId === w.id && wp.periodId === pId);
+      const prjId = w.projectId || (d.projects[0]?.id || "PRJ_NINH_KIEU");
+      const exists = d.wagePayments.some(
+        wp => wp.workerId === w.id && wp.periodId === pId && wp.projectId === prjId
+      );
       if (!exists) {
         d.wagePayments.push({
           id: "WPAY_MIG_W_" + w.id + "_" + pId,
-          projectId: w.projectId,
+          projectId: prjId,
           workerId: w.id,
           periodId: pId,
-          grossWage: 0,
-          advanceDeducted: 0,
-          netPaid: 0,
+          grossWage: null,
+          advanceDeducted: null,
+          netPaid: null,
           paidDate: d.settings.selectedDate || getTodayVN(),
-          note: "Đã chi trả (Di chuyển từ trạng thái thợ cũ)"
+          status: "paid",
+          isLegacyMigration: true,
+          requiresHistoricalReconciliation: true,
+          note: "Đã chi trả (Di chuyển từ trạng thái thợ cũ, cần đối soát lịch sử)"
         });
       }
     }
@@ -410,32 +586,46 @@ class AppStorage {
   static loadSync() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return createDefaultStore();
+      if (!raw) {
+        const def = createDefaultStore();
+        def.isDefaultStore = true;
+        def.revision = 0;
+        return def;
+      }
       return migrateStore(JSON.parse(raw));
     } catch (e) {
-      console.warn("LocalStorage read error, fallback to default store:", e);
-      return createDefaultStore();
+      console.warn("LocalStorage read error, fallback to temporary default store:", e);
+      const def = createDefaultStore();
+      def.isDefaultStore = true;
+      def.revision = 0;
+      return def;
     }
   }
 
   static async save(data) {
     if (!data) return;
-    // Tăng số hiệu revision và cập nhật timestamp
+    // Đánh dấu đây là dữ liệu người dùng thật (không phải store mặc định ban đầu)
+    data.isDefaultStore = false;
     data.revision = (Number(data.revision) || 0) + 1;
     data.updatedAt = new Date().toISOString();
 
+    // 1. Lưu LocalStorage an toàn (xử lý QuotaExceededError khi có ảnh chữ ký Base64 lớn)
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch (e) {
-      console.warn("LocalStorage save warning (có thể do dung lượng ảnh chữ ký):", e);
+      console.warn("LocalStorage save warning / QuotaExceeded (dữ liệu vẫn được lưu an toàn vào IndexedDB):", e);
     }
 
+    // 2. Lưu IndexedDB với đầy đủ xử lý onerror, onabort, quota
     if (AppStorage.db) {
       try {
         const tx = AppStorage.db.transaction(STORE_NAME, "readwrite");
-        tx.objectStore(STORE_NAME).put(data, "current_state");
+        tx.onerror = (err) => console.error("IndexedDB transaction error:", err);
+        tx.onabort = (err) => console.error("IndexedDB transaction aborted (quota exceeded):", err);
+        const req = tx.objectStore(STORE_NAME).put(data, "current_state");
+        req.onerror = (err) => console.error("IndexedDB put request error:", err);
       } catch (err) {
-        console.warn("IndexedDB save error:", err);
+        console.warn("IndexedDB save exception:", err);
       }
     }
   }
@@ -462,30 +652,67 @@ class AppStorage {
     try {
       const idbData = await AppStorage.loadFromIndexedDB();
       if (!idbData) {
-        // IDB rỗng -> Lưu dữ liệu LocalStorage hiện tại sang IDB
-        if (AppStorage.db && store) {
+        // IDB chưa có dữ liệu -> Chỉ lưu nếu store hiện tại là dữ liệu người dùng thật
+        if (AppStorage.db && store && !store.isDefaultStore) {
           const tx = AppStorage.db.transaction(STORE_NAME, "readwrite");
           tx.objectStore(STORE_NAME).put(store, "current_state");
         }
         return;
       }
 
-      const idbTime = new Date(idbData.updatedAt || 0).getTime();
-      const localTime = new Date(store.updatedAt || 0).getTime();
-      const idbRev = Number(idbData.revision) || 0;
-      const localRev = Number(store.revision) || 0;
+      const isIdbReal = !idbData.isDefaultStore && (Number(idbData.revision) > 0 || (Array.isArray(idbData.projects) && idbData.projects.length > 0));
+      const isLocalReal = !store.isDefaultStore && Number(store.revision) > 0;
 
-      // Single source of truth: Chỉ lấy IDB nếu IDB STRICTLY MỚI HƠN LocalStorage
-      if ((idbRev > localRev && idbTime > localTime) || (localRev === 0 && idbRev > 0)) {
-        console.log("IndexedDB contains newer data. Upgrading store from IDB.");
+      // TRƯỜNG HỢP 1: IDB CÓ DỮ LIỆU THẬT MÀ LOCALSTORAGE BỊ MẤT/HỎNG/STORE MẶC ĐỊNH
+      // Phục hồi 100% từ IDB sang LocalStorage, TUYỆT ĐỐI KHÔNG GHI ĐÈ IDB!
+      if (isIdbReal && !isLocalReal) {
+        console.log("Phát hiện IndexedDB có dữ liệu người dùng thật còn LocalStorage bị trống/hỏng. Phục hồi 100% từ IndexedDB!");
         store = idbData;
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
         } catch (e) {}
         renderAll();
-      } else {
-        // LocalStorage mới hơn hoặc bằng -> Không cho IDB cũ ghi đè!
-        // Đồng bộ ngược từ LocalStorage sang IDB
+        return;
+      }
+
+      // TRƯỜNG HỢP 2: CẢ HAI ĐỀU CÓ DỮ LIỆU THẬT -> SO SÁNH REVISION & TIMESTAMP
+      if (isIdbReal && isLocalReal) {
+        const idbRev = Number(idbData.revision) || 0;
+        const localRev = Number(store.revision) || 0;
+
+        if (idbRev > localRev) {
+          console.log(`IndexedDB mới hơn (rev ${idbRev} > ${localRev}). Cập nhật store từ IDB.`);
+          store = idbData;
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+          } catch (e) {}
+          renderAll();
+        } else if (localRev > idbRev) {
+          console.log(`LocalStorage mới hơn (rev ${localRev} > ${idbRev}). Cập nhật IDB từ LocalStorage.`);
+          if (AppStorage.db && store) {
+            const tx = AppStorage.db.transaction(STORE_NAME, "readwrite");
+            tx.objectStore(STORE_NAME).put(store, "current_state");
+          }
+        } else {
+          // Revision bằng nhau: so sánh timestamp
+          const idbTime = new Date(idbData.updatedAt || 0).getTime();
+          const localTime = new Date(store.updatedAt || 0).getTime();
+          if (idbTime > localTime) {
+            store = idbData;
+            try { localStorage.setItem(STORAGE_KEY, JSON.stringify(store)); } catch (e) {}
+            renderAll();
+          } else if (localTime > idbTime) {
+            if (AppStorage.db && store) {
+              const tx = AppStorage.db.transaction(STORE_NAME, "readwrite");
+              tx.objectStore(STORE_NAME).put(store, "current_state");
+            }
+          }
+        }
+        return;
+      }
+
+      // TRƯỜNG HỢP 3: LOCALSTORAGE CÓ DỮ LIỆU THẬT MÀ IDB CHƯA CÓ HOẶC LÀ STORE MẶC ĐỊNH
+      if (!isIdbReal && isLocalReal) {
         if (AppStorage.db && store) {
           const tx = AppStorage.db.transaction(STORE_NAME, "readwrite");
           tx.objectStore(STORE_NAME).put(store, "current_state");
@@ -505,6 +732,8 @@ let activePayslipWorker = null;
 let activeSupplementalAdvanceId = null;
 let activeMaterialDebtMatId = null;
 let activeWagePaymentWorkerId = null;
+let activeWagePaymentProjectId = null;
+let activeWagePaymentPeriodId = null;
 
 function saveStore() {
   AppStorage.save(store);
@@ -514,6 +743,95 @@ function matchesProject(itemProjectId) {
   const sel = store.settings.selectedProjectId;
   return sel === "ALL" || itemProjectId === sel;
 }
+
+// ================= KIỂM TRA THỢ THUỘC CÔNG TRÌNH THEO THỜI GIAN =================
+// Đảm bảo khi thợ chuyển công trình, dữ liệu cũ tại công trình cũ vẫn tra cứu được đầy đủ
+function isWorkerActiveInProject(worker, targetProjectId, periodOrDate = null) {
+  if (!worker) return false;
+  if (!targetProjectId || targetProjectId === "ALL") return true;
+
+  const period = periodOrDate || store.settings.payrollPeriod || store.settings.selectedMonth || "";
+  const periodMonth = period.slice(0, 7);
+
+  // 1. Kiểm tra xem thợ có phát sinh dữ liệu thực tế tại targetProjectId trong kỳ/ngày này không
+  const hasAttendance = store.attendance.some(a =>
+    a.workerId === worker.id && a.projectId === targetProjectId && (!periodMonth || a.date.startsWith(periodMonth))
+  );
+  if (hasAttendance) return true;
+
+  const hasAdvance = store.advances.some(a =>
+    a.workerId === worker.id && a.projectId === targetProjectId && (!periodMonth || a.date.startsWith(periodMonth))
+  );
+  if (hasAdvance) return true;
+
+  const hasWage = store.wagePayments.some(wp =>
+    wp.workerId === worker.id && wp.projectId === targetProjectId && (!periodMonth || wp.periodId === periodMonth)
+  );
+  if (hasWage) return true;
+
+  // 2. Kiểm tra theo lịch sử phân công assignments (nếu có)
+  if (Array.isArray(worker.assignments) && worker.assignments.length > 0) {
+    return worker.assignments.some(asn => {
+      if (asn.projectId !== targetProjectId) return false;
+      if (!period) return !asn.endDate; // Không có bộ lọc ngày -> kiểm tra assignment đang active
+      const pStart = period.length === 7 ? (period + "-01") : period;
+      const pEnd = period.length === 7 ? (period + "-31") : period;
+      const aStart = asn.startDate || "2000-01-01";
+      const aEnd = asn.endDate || "2099-12-31";
+      return aStart <= pEnd && aEnd >= pStart;
+    });
+  }
+
+  // 3. Fallback: nếu chưa có assignments và không có period lọc, so sánh worker.projectId
+  if (!period) return worker.projectId === targetProjectId;
+  return false;
+}
+
+// Chuyển thợ sang công trình mới an toàn, bảo toàn 100% lịch sử công trình cũ
+window.transferWorker = function(workerId, newProjectId, effectiveDate = null) {
+  const w = store.workers.find(x => x.id === workerId);
+  if (!w) return false;
+  if (w.projectId === newProjectId) return true;
+
+  const oldProjectId = w.projectId;
+  const effDate = effectiveDate || getTodayVN();
+
+  if (!Array.isArray(w.assignments)) {
+    w.assignments = [];
+    if (oldProjectId) {
+      w.assignments.push({
+        projectId: oldProjectId,
+        startDate: "2025-01-01",
+        endDate: effDate
+      });
+    }
+  } else {
+    // Đóng assignment đang mở
+    w.assignments.forEach(a => {
+      if (!a.endDate || a.endDate > effDate) {
+        a.endDate = effDate;
+      }
+    });
+  }
+
+  w.assignments.push({
+    projectId: newProjectId,
+    startDate: effDate,
+    endDate: null
+  });
+
+  w.projectId = newProjectId;
+
+  store.auditLogs.push({
+    id: "LOG_TRANS_" + Date.now(),
+    time: new Date().toISOString(),
+    action: `Chuyển thợ ${w.name} từ công trình ${oldProjectId} sang ${newProjectId} từ ngày ${effDate}`
+  });
+
+  saveStore();
+  renderAll();
+  return true;
+};
 
 // ================= SỔ QUỸ TIỀN MẶT THỐNG NHẤT (UNIFIED CASH LEDGER) =================
 // Nguồn đơn nhất (Single Source of Truth) kết hợp: Sổ thu chi + Tạm ứng + Lương thợ + Vật tư
@@ -562,6 +880,10 @@ function getUnifiedCashLedger(projectId = "ALL") {
   // 3. Chi trả lương thực tế (quyết toán tiền mặt)
   store.wagePayments.forEach(wp => {
     if (projectId !== "ALL" && wp.projectId !== projectId) return;
+    // Bỏ qua chứng từ migration chưa rõ số tiền thực chi để KHÔNG TẠO CHỨNG TỪ TIỀN MẶT GIẢ 0 Đ TRONG SỔ QUỸ
+    if (wp.isLegacyMigration && (wp.netPaid == null || wp.requiresHistoricalReconciliation)) {
+      return;
+    }
     const w = store.workers.find(x => x.id === wp.workerId);
     const prj = store.projects.find(p => p.id === wp.projectId);
     ledger.push({
@@ -682,9 +1004,16 @@ function calculateWorkerPayrollForPeriod(workerId, projectId = null, targetPerio
 
     if (existingPayment) {
       // Đã quyết toán: lấy theo chứng từ thanh toán đã lưu
-      advanceDeducted = existingPayment.advanceDeducted != null ? existingPayment.advanceDeducted : Math.min(grossWage, totalDeductible);
-      netPayable = existingPayment.netPaid;
-      closingSurplus = Math.max(0, totalDeductible - grossWage);
+      const isLegacyWithoutAmount = existingPayment.isLegacyMigration && (existingPayment.netPaid == null || existingPayment.requiresHistoricalReconciliation);
+      if (isLegacyWithoutAmount) {
+        advanceDeducted = Math.min(grossWage, totalDeductible);
+        netPayable = 0; // Đã trả lương trong lịch sử, không chi trả lần 2
+        closingSurplus = Math.max(0, totalDeductible - grossWage);
+      } else {
+        advanceDeducted = existingPayment.advanceDeducted != null ? existingPayment.advanceDeducted : Math.min(grossWage, totalDeductible);
+        netPayable = Number(existingPayment.netPaid || 0);
+        closingSurplus = Math.max(0, totalDeductible - grossWage);
+      }
     } else {
       // Chưa quyết toán
       if (grossWage >= totalDeductible) {
@@ -884,7 +1213,9 @@ function renderOverviewTab() {
     ? "Chi: ••••••••"
     : `Chi -${formatVND(fin.periodCashOut)}`;
 
-  const activeWorkers = store.workers.filter(w => matchesProject(w.projectId)).length;
+  const selProj = store.settings.selectedProjectId;
+  const selMo = store.settings.selectedMonth;
+  const activeWorkers = store.workers.filter(w => isWorkerActiveInProject(w, selProj, selMo)).length;
   document.getElementById("kpiTotalAttendance").textContent = `${fin.periodAttendanceUnits} công`;
   document.getElementById("kpiWorkerCount").textContent = `${activeWorkers} thợ đang phụ trách`;
 
@@ -913,7 +1244,7 @@ function renderOverviewTab() {
   // Danh sách tóm tắt công trình
   const listEl = document.getElementById("overviewProjectList");
   listEl.innerHTML = store.projects.map(p => {
-    const wCount = store.workers.filter(w => w.projectId === p.id).length;
+    const wCount = store.workers.filter(w => isWorkerActiveInProject(w, p.id, selMo)).length;
     const isSel = store.settings.selectedProjectId === p.id;
     return `
       <div class="item-card" onclick="selectProject('${p.id}')" style="cursor:pointer; ${isSel ? 'border-color: var(--brand-primary); border-width: 1.5px;' : ''}">
@@ -950,12 +1281,13 @@ function renderAttendanceTab() {
   document.getElementById("attendanceDateHuman").textContent =
     dateStr === todayStr ? "Hôm nay" : `Ngày ${dateStr.split("-").reverse().join("/")}`;
 
-  const workers = store.workers.filter(w => matchesProject(w.projectId));
+  const targetProjId = store.settings.selectedProjectId;
+  const workers = store.workers.filter(w => isWorkerActiveInProject(w, targetProjId, dateStr));
   let count1 = 0, count05 = 0, count15 = 0, count0 = 0, countUnset = 0;
 
   const listHtml = workers.map(w => {
     const rec = store.attendance.find(
-      a => a.projectId === w.projectId && a.workerId === w.id && a.date === dateStr
+      a => (targetProjId === "ALL" || a.projectId === targetProjId) && a.workerId === w.id && a.date === dateStr
     );
     const val = rec ? rec.units : null;
     if (val === 1.0) count1++;
@@ -1017,7 +1349,10 @@ function renderAttendanceTab() {
 window.setWorkerAttendance = function(workerId, units) {
   const w = store.workers.find(x => x.id === workerId);
   if (!w) return;
-  const prj = store.projects.find(p => p.id === w.projectId);
+  const targetProjId = (store.settings.selectedProjectId && store.settings.selectedProjectId !== "ALL")
+    ? store.settings.selectedProjectId
+    : w.projectId;
+  const prj = store.projects.find(p => p.id === targetProjId);
   if (prj && prj.status === "completed") {
     showToast("Công trình này đã hoàn thành (Chỉ xem lịch sử). Không thể sửa công!");
     return;
@@ -1025,7 +1360,7 @@ window.setWorkerAttendance = function(workerId, units) {
 
   const dateStr = store.settings.selectedDate;
   const existingIdx = store.attendance.findIndex(
-    a => a.projectId === w.projectId && a.workerId === w.id && a.date === dateStr
+    a => a.projectId === targetProjId && a.workerId === w.id && a.date === dateStr
   );
 
   if (existingIdx >= 0) {
@@ -1033,7 +1368,7 @@ window.setWorkerAttendance = function(workerId, units) {
   } else {
     store.attendance.push({
       id: "ATT_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
-      projectId: w.projectId,
+      projectId: targetProjId,
       workerId: w.id,
       date: dateStr,
       units,
@@ -1060,7 +1395,7 @@ document.getElementById("btnMarkAllFullDay").addEventListener("click", () => {
   }
 
   const dateStr = store.settings.selectedDate;
-  const workers = store.workers.filter(w => w.projectId === prjId);
+  const workers = store.workers.filter(w => isWorkerActiveInProject(w, prjId, dateStr));
   if (workers.length === 0) {
     showToast("Chưa có thợ trong công trình này!");
     return;
@@ -1171,13 +1506,16 @@ function renderMoneyTab() {
     };
   }
 
-  const workers = store.workers.filter(w => matchesProject(w.projectId));
+  const targetProjId = store.settings.selectedProjectId;
+  const workers = store.workers.filter(w => isWorkerActiveInProject(w, targetProjId, targetPeriod));
   document.getElementById("payrollWorkerList").innerHTML = workers.map(w => {
-    const prj = store.projects.find(p => p.id === w.projectId);
-    const payroll = calculateWorkerPayrollForPeriod(w.id, w.projectId, targetPeriod);
+    const effProjId = targetProjId === "ALL" ? w.projectId : targetProjId;
+    const prj = store.projects.find(p => p.id === effProjId);
+    const payroll = calculateWorkerPayrollForPeriod(w.id, effProjId, targetPeriod);
     if (!payroll) return "";
 
     const { totalUnits, grossWage, periodAdvance, carryForwardIn, advanceDeducted, netPayable, closingSurplus, isPaid, wagePayment } = payroll;
+    const isLegacyAudit = isPaid && wagePayment && (wagePayment.requiresHistoricalReconciliation || wagePayment.isLegacyMigration);
 
     return `
       <div class="item-card">
@@ -1186,8 +1524,8 @@ function renderMoneyTab() {
             <div class="item-title">${escapeHTML(w.name)}</div>
             <div class="item-sub">🏗️ ${escapeHTML(prj ? prj.name : '')} • ${escapeHTML(w.role)} • <strong>${totalUnits} công</strong> (${formatVND(w.dailyRate)}/công)</div>
           </div>
-          <span class="badge ${isPaid ? 'badge-green' : (closingSurplus > 0 && netPayable === 0 ? 'badge-red' : 'badge-blue')}">
-            ${isPaid ? '✅ Đã chi trả' : (closingSurplus > 0 && netPayable === 0 ? 'Dư ứng sang kỳ sau' : 'Chờ tất toán')}
+          <span class="badge ${isPaid ? (isLegacyAudit ? 'badge-amber' : 'badge-green') : (closingSurplus > 0 && netPayable === 0 ? 'badge-red' : 'badge-blue')}">
+            ${isPaid ? (isLegacyAudit ? '⚠️ Đã trả (Cần đối soát)' : '✅ Đã chi trả') : (closingSurplus > 0 && netPayable === 0 ? 'Dư ứng sang kỳ sau' : 'Chờ tất toán')}
           </span>
         </div>
         <div style="margin: 10px 0; font-size:13.5px; display:flex; flex-direction:column; gap:4px; color:var(--text-secondary);">
@@ -1207,14 +1545,19 @@ function renderMoneyTab() {
             <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">
               ${netPayable > 0 || isPaid ? 'Thực lĩnh' : 'Dư ứng khấu trừ kỳ sau'}
             </div>
-            <div style="font-size:20px; font-weight:800; color:${netPayable > 0 || isPaid ? 'var(--brand-primary)' : 'var(--danger-debt)'}; font-variant-numeric:tabular-nums;">
-              ${isPaid ? formatVND(wagePayment.netPaid) : (netPayable > 0 ? formatVND(netPayable) : 'Âm ' + formatVND(closingSurplus))}
+            <div style="font-size:20px; font-weight:800; color:${isPaid ? (isLegacyAudit ? 'var(--amber-warn)' : 'var(--brand-primary)') : (netPayable > 0 ? 'var(--brand-primary)' : 'var(--danger-debt)')}; font-variant-numeric:tabular-nums;">
+              ${isPaid 
+                ? (isLegacyAudit ? 'Đã trả (Lịch sử)' : formatVND(wagePayment.netPaid)) 
+                : (netPayable > 0 ? formatVND(netPayable) : 'Âm ' + formatVND(closingSurplus))}
             </div>
-            ${isPaid ? `<small style="color:var(--brand-primary); font-size:11.5px; font-weight:600;">(Đã chi ngày ${wagePayment.paidDate})</small>` : ''}
+            ${isPaid ? (isLegacyAudit
+              ? `<small style="color:var(--amber-warn); font-size:11.5px; font-weight:600;">(Di chuyển từ V1: Cần đối soát số tiền thực chi)</small>`
+              : `<small style="color:var(--brand-primary); font-size:11.5px; font-weight:600;">(Đã chi ngày ${wagePayment.paidDate})</small>`
+            ) : ''}
           </div>
           <div style="display:flex; gap:6px;">
-            <button class="date-step-btn" onclick="openVisualPayslip('${w.id}')">📤 Phiếu Zalo</button>
-            ${!isPaid && netPayable > 0 ? `<button class="date-step-btn" style="background:var(--brand-primary); color:#FFF; border:none;" onclick="openWagePaymentSheet('${w.id}')">Chốt trả</button>` : ''}
+            <button class="date-step-btn" onclick="openVisualPayslip('${w.id}', '${effProjId}')">📤 Phiếu Zalo</button>
+            ${!isPaid && netPayable > 0 ? `<button class="date-step-btn" style="background:var(--brand-primary); color:#FFF; border:none;" onclick="openWagePaymentSheet('${w.id}', '${effProjId}')">Chốt trả</button>` : ''}
           </div>
         </div>
       </div>
@@ -1284,25 +1627,28 @@ function renderCashflowList() {
 }
 
 // ================= CHI TRẢ LƯƠNG CHUẨN KẾ TOÁN =================
-window.openWagePaymentSheet = function(workerId) {
+window.openWagePaymentSheet = function(workerId, projectId = null) {
   const w = store.workers.find(x => x.id === workerId);
   if (!w) return;
   activeWagePaymentWorkerId = workerId;
 
+  const targetProjId = projectId || (store.settings.selectedProjectId !== "ALL" ? store.settings.selectedProjectId : w.projectId);
+  activeWagePaymentProjectId = targetProjId;
+
   const targetPeriod = store.settings.payrollPeriod || store.settings.selectedMonth || getTodayVN().slice(0, 7);
   activeWagePaymentPeriodId = targetPeriod;
-  const prj = store.projects.find(p => p.id === w.projectId);
+  const prj = store.projects.find(p => p.id === targetProjId);
 
   // Kiểm tra chống chi trả trùng
   const alreadyPaid = store.wagePayments.find(
-    wp => wp.projectId === w.projectId && wp.workerId === w.id && wp.periodId === targetPeriod
+    wp => wp.projectId === targetProjId && wp.workerId === w.id && wp.periodId === targetPeriod
   );
   if (alreadyPaid) {
     showToast(`Lương kỳ ${targetPeriod} của thợ đã được quyết toán trước đó!`);
     return;
   }
 
-  const calc = calculateWorkerPayrollForPeriod(w.id, w.projectId, targetPeriod);
+  const calc = calculateWorkerPayrollForPeriod(w.id, targetProjId, targetPeriod);
   if (!calc || calc.netPayable <= 0) {
     showToast(calc && calc.closingSurplus > 0
       ? `Thợ đang dư ứng ${formatVND(calc.closingSurplus)}. Không có số tiền cần chi trả tiền mặt!`
@@ -1335,10 +1681,11 @@ document.getElementById("btnConfirmWagePayout").addEventListener("click", () => 
   if (!w) return;
 
   const targetPeriod = activeWagePaymentPeriodId || store.settings.payrollPeriod || store.settings.selectedMonth || getTodayVN().slice(0, 7);
+  const targetProjId = activeWagePaymentProjectId || (store.settings.selectedProjectId !== "ALL" ? store.settings.selectedProjectId : w.projectId);
 
   // Kiểm tra chống chi trả trùng ngay lập tức trong hàm xác nhận
   const alreadyPaid = store.wagePayments.find(
-    wp => wp.projectId === w.projectId && wp.workerId === w.id && wp.periodId === targetPeriod
+    wp => wp.projectId === targetProjId && wp.workerId === w.id && wp.periodId === targetPeriod
   );
   if (alreadyPaid) {
     showToast(`Lương kỳ ${targetPeriod} của thợ đã được quyết toán trước đó! Không thể chi trả trùng.`);
@@ -1346,7 +1693,7 @@ document.getElementById("btnConfirmWagePayout").addEventListener("click", () => 
     return;
   }
 
-  const calc = calculateWorkerPayrollForPeriod(w.id, w.projectId, targetPeriod);
+  const calc = calculateWorkerPayrollForPeriod(w.id, targetProjId, targetPeriod);
   if (!calc || calc.netPayable <= 0) {
     showToast("Không có số tiền cần chi trả tiền mặt!");
     document.getElementById("sheetWagePayment").hidden = true;
@@ -1358,7 +1705,7 @@ document.getElementById("btnConfirmWagePayout").addEventListener("click", () => 
 
   store.wagePayments.push({
     id: "WPAY_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
-    projectId: w.projectId,
+    projectId: targetProjId,
     workerId: w.id,
     periodId: targetPeriod,
     grossWage: calc.grossWage,
@@ -1679,7 +2026,8 @@ function populateFormProjectSelects() {
 
 function updateAdvanceWorkerOptions() {
   const prjId = document.getElementById("advProjectSelect")?.value || store.settings.selectedProjectId;
-  const workers = store.workers.filter(w => prjId === "ALL" ? true : w.projectId === prjId);
+  const advDate = document.getElementById("advDateInput")?.value || getTodayVN();
+  const workers = store.workers.filter(w => isWorkerActiveInProject(w, prjId, advDate));
   const sel = document.getElementById("advWorkerSelect");
   if (sel) {
     sel.innerHTML = workers.map(w => `<option value="${w.id}">${escapeHTML(w.name)} (${escapeHTML(w.role)})</option>`).join("") ||
@@ -1752,13 +2100,14 @@ document.getElementById("btnSaveAdvance").addEventListener("click", () => {
   }
 
   const advDate = document.getElementById("advDateInput").value || getTodayVN();
+  const targetProjId = document.getElementById("advProjectSelect")?.value || (store.settings.selectedProjectId !== "ALL" ? store.settings.selectedProjectId : w.projectId);
   const sigUrl = hasSignatureInk ? spenCanvas.toDataURL("image/png") : null;
   const nowIso = new Date().toISOString();
-  const docRef = "REF_ADV_" + w.projectId + "_" + w.id + "_" + advDate.replace(/-/g, "") + "_" + Date.now().toString(36);
+  const docRef = "REF_ADV_" + targetProjId + "_" + w.id + "_" + advDate.replace(/-/g, "") + "_" + Date.now().toString(36);
 
   store.advances.push({
     id: "ADV_" + Date.now(),
-    projectId: w.projectId,
+    projectId: targetProjId,
     workerId: w.id,
     amountVnd: currentAdvanceAmount,
     date: advDate,
@@ -1780,15 +2129,16 @@ document.getElementById("btnSaveAdvance").addEventListener("click", () => {
 });
 
 // ================= PHIẾU LƯƠNG ẢNH ĐỐI SOÁT (ZALO SHARING) =================
-window.openVisualPayslip = function(workerId) {
+window.openVisualPayslip = function(workerId, projectId = null) {
   const w = store.workers.find(x => x.id === workerId);
   if (!w) return;
   activePayslipWorker = w;
 
   const targetPeriod = store.settings.payrollPeriod || store.settings.selectedMonth || getTodayVN().slice(0, 7);
-  const prj = store.projects.find(p => p.id === w.projectId);
+  const targetProjId = projectId || (store.settings.selectedProjectId !== "ALL" ? store.settings.selectedProjectId : w.projectId);
+  const prj = store.projects.find(p => p.id === targetProjId);
 
-  const calc = calculateWorkerPayrollForPeriod(w.id, w.projectId, targetPeriod);
+  const calc = calculateWorkerPayrollForPeriod(w.id, targetProjId, targetPeriod);
   if (!calc) return;
 
   const { totalUnits, grossWage, periodAdvance, carryForwardIn, advanceDeducted, netPayable, closingSurplus, isPaid, wagePayment, advRecords } = calc;
@@ -1931,7 +2281,7 @@ function renderProjectsTab() {
   });
 
   document.getElementById("projectsManageList").innerHTML = list.map(p => {
-    const wCount = store.workers.filter(w => w.projectId === p.id).length;
+    const wCount = store.workers.filter(w => isWorkerActiveInProject(w, p.id, store.settings.selectedMonth)).length;
     return `
       <div class="item-card">
         <div class="item-card-row">
@@ -2064,13 +2414,21 @@ document.getElementById("btnSubmitNewWorker")?.addEventListener("click", () => {
 
   const role = document.getElementById("newWorkerRole").value;
   const rate = Number(document.getElementById("newWorkerRate").value) || 450000;
+  const today = getTodayVN();
 
   store.workers.push({
     id: "W" + (store.workers.length + 1) + "_" + Date.now().toString(36).slice(-4),
     name,
     role,
     dailyRate: rate,
-    projectId: prjId
+    projectId: prjId,
+    assignments: [
+      {
+        projectId: prjId,
+        startDate: today,
+        endDate: null
+      }
+    ]
   });
   saveStore();
   document.getElementById("sheetNewWorkerForm").hidden = true;
@@ -2215,7 +2573,16 @@ window.generateExcelWorkbook = function() {
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryData), "TongQuan_TonQuy");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.projects), "DanhSach_CongTrinh");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.workers), "DoiTho");
+
+  const workersExport = store.workers.map(w => ({
+    MaTho: w.id,
+    HoTen: w.name,
+    VaiTro: w.role,
+    DonGiaNgay: w.dailyRate,
+    CongTrinhHienTai: w.projectId,
+    LichSuPhanCong: (w.assignments || []).map(a => `${a.projectId} (${a.startDate || ''} ~ ${a.endDate || 'nay'})`).join("; ")
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(workersExport), "DoiTho");
 
   const attExport = store.attendance.map(a => {
     const w = store.workers.find(x => x.id === a.workerId);

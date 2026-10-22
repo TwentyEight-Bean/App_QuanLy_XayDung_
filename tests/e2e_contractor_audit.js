@@ -615,6 +615,309 @@ async function runTests() {
   assert(migrationTest.p1Paid, "Worker có payrollStatus='paid' cũ được tự động chuyển thành bản ghi wagePayments");
   assert(migrationTest.p2Paid, "payrollStatus dictionary cũ được tự động chuyển thành bản ghi wagePayments");
 
+  // ================= BÀI TEST 7.1: BUG 2 — INDEXEDDB OVERWRITE PROTECTION KHI LOCALSTORAGE MẤT/HỎNG =================
+  console.log('\n--- BÀI TEST 7.1: BUG 2 — IndexedDB Overwrite Protection & Real Browser Reload ---');
+  await evaluate(`(async () => {
+    const real24MonthsData = {
+      ...createDefaultStore(),
+      isDefaultStore: false,
+      revision: 100,
+      updatedAt: "2026-10-22T00:00:00.000Z",
+      projects: [
+        { id: "PRJ_HISTORICAL_24M", name: "Dự án Khu Đô Thị Nam Long (24 Tháng)", status: "active", startDate: "2024-10-01" },
+        { id: "PRJ_NINH_KIEU", name: "Nhà phố Ninh Kiều", status: "active", startDate: "2026-09-01" }
+      ],
+      workers: [
+        {
+          id: "W_MASTER_01",
+          name: "Lê Hoàng Quân",
+          role: "Thợ cả lâu năm",
+          dailyRate: 650000,
+          projectId: "PRJ_HISTORICAL_24M",
+          assignments: [{ projectId: "PRJ_HISTORICAL_24M", startDate: "2024-10-01", endDate: null }]
+        }
+      ],
+      attendance: [
+        { id: "ATT_H_1", projectId: "PRJ_HISTORICAL_24M", workerId: "W_MASTER_01", date: "2024-10-15", units: 1.0, rateSnapshot: 650000 }
+      ],
+      advances: [
+        {
+          id: "ADV_H_1",
+          projectId: "PRJ_HISTORICAL_24M",
+          workerId: "W_MASTER_01",
+          date: "2024-10-20",
+          amountVnd: 2000000,
+          signedStatus: "signed",
+          signatureType: "digital_ink",
+          docRef: "REF_HISTORICAL_24M_W_MASTER_01"
+        }
+      ],
+      cashTransactions: [
+        { id: "CSH_H_1", projectId: "PRJ_HISTORICAL_24M", type: "in", amountVnd: 150000000, date: "2024-10-05" }
+      ],
+      wagePayments: [],
+      materials: []
+    };
+
+    const tx = AppStorage.db.transaction(STORE_NAME, "readwrite");
+    tx.objectStore(STORE_NAME).put(real24MonthsData, "current_state");
+    await new Promise(r => tx.oncomplete = r);
+
+    // Xóa sạch LocalStorage (giả lập trường hợp xóa dữ liệu duyệt web hoặc mất LocalStorage)
+    localStorage.clear();
+  })()`);
+
+  console.log('🔄 Đang reload trang qua CDP để kiểm tra phục hồi tự động từ IndexedDB...');
+  await sendCDP('Page.reload', { ignoreCache: true });
+  await wait(2500);
+
+  const reloadRecoveryTest = await evaluate(`(async () => {
+    await AppStorage.syncWithIndexedDB();
+    const idb = await AppStorage.loadFromIndexedDB();
+    const localRaw = localStorage.getItem(STORAGE_KEY);
+    const localStore = localRaw ? JSON.parse(localRaw) : null;
+    return {
+      currentStoreRev: store.revision,
+      currentStoreIsDefault: store.isDefaultStore,
+      prjCount: store.projects.length,
+      hasHistoricalPrj: store.projects.some(p => p.id === "PRJ_HISTORICAL_24M"),
+      hasMasterWorker: store.workers.some(w => w.id === "W_MASTER_01"),
+      hasSignature: store.advances.some(a => a.id === "ADV_H_1" && a.signedStatus === "signed"),
+      cashBalance: store.cashTransactions.find(t => t.id === "CSH_H_1")?.amountVnd,
+      idbRev: idb ? idb.revision : null,
+      idbHasHistoricalPrj: idb ? idb.projects.some(p => p.id === "PRJ_HISTORICAL_24M") : false,
+      localStorageRestored: !!localStore && localStore.revision === 100
+    };
+  })()`);
+
+  assert(reloadRecoveryTest.currentStoreRev === 100, `Ứng dụng phục hồi chính xác revision 100 từ IndexedDB sau reload (hiện tại: ${reloadRecoveryTest.currentStoreRev})`);
+  assert(!reloadRecoveryTest.currentStoreIsDefault, "Dữ liệu phục hồi được xác định là dữ liệu người dùng thật (isDefaultStore = false)");
+  assert(reloadRecoveryTest.hasHistoricalPrj, "Công trình 24 tháng PRJ_HISTORICAL_24M còn nguyên vẹn sau reload");
+  assert(reloadRecoveryTest.hasMasterWorker, "Hồ sơ thợ W_MASTER_01 tồn tại sau reload");
+  assert(reloadRecoveryTest.hasSignature, "Chứng từ chữ ký S-Pen ADV_H_1 tồn tại sau reload");
+  assert(reloadRecoveryTest.cashBalance === 150000000, "Sổ quỹ thu tiền mặt 150.000.000 đ còn nguyên vẹn");
+  assert(reloadRecoveryTest.idbRev === 100 && reloadRecoveryTest.idbHasHistoricalPrj, "IndexedDB TUYỆT ĐỐI KHÔNG BỊ GHI ĐÈ bởi store mặc định");
+  assert(reloadRecoveryTest.localStorageRestored, "LocalStorage bị mất đã được tự động tái lập đồng bộ từ IndexedDB");
+
+  // Kiểm tra thêm trường hợp LocalStorage chứa JSON hỏng
+  const corruptedLsTest = await evaluate(`(async () => {
+    localStorage.setItem(STORAGE_KEY, "{ corrupted_invalid_json: 123... ");
+    const loaded = AppStorage.loadSync();
+    await AppStorage.syncWithIndexedDB();
+    const idb = await AppStorage.loadFromIndexedDB();
+    return {
+      loadedWasDefault: loaded.isDefaultStore,
+      restoredRev: store.revision,
+      hasHist: store.projects.some(p => p.id === "PRJ_HISTORICAL_24M"),
+      idbIntact: idb && idb.revision === 100
+    };
+  })()`);
+  assert(corruptedLsTest.restoredRev === 100 && corruptedLsTest.hasHist, "Khi LocalStorage chứa JSON hỏng, ứng dụng tự động phục hồi an toàn từ IndexedDB");
+  assert(corruptedLsTest.idbIntact, "IndexedDB không bị ảnh hưởng bởi LocalStorage bị lỗi");
+
+  // ================= BÀI TEST 7.2: BUG 1 — MIGRATION PAYROLLSTATUS V1 THỰC TẾ (KHÓA CHỨA NHIỀU DẤU _) =================
+  console.log('\n--- BÀI TEST 7.2: BUG 1 — Migration payrollStatus thực tế của V1 (Khóa chứa dấu _) ---');
+  const v1MigrationDetailedTest = await evaluate(`(() => {
+    const v1Fixture = {
+      projects: [
+        { id: "PRJ_NINH_KIEU", name: "Nhà phố Ninh Kiều" },
+        { id: "PRJ_CAI_RANG_PHASE_1", name: "Biệt thự Cái Răng Giai đoạn 1" }
+      ],
+      workers: [
+        { id: "W_LEG_01", name: "Nguyễn Văn Ba", role: "Thợ cả", dailyRate: 500000, projectId: "PRJ_NINH_KIEU" },
+        { id: "W_02_SUB", name: "Trần Văn Tư", role: "Thợ xây", dailyRate: 450000, projectId: "PRJ_NINH_KIEU" },
+        { id: "W03", name: "Lê Hoàng Nam", role: "Thợ sắt", dailyRate: 450000, projectId: "PRJ_CAI_RANG_PHASE_1" }
+      ],
+      payrollStatus: {
+        "PRJ_NINH_KIEU_W_LEG_01_2026-10": "paid",
+        "PRJ_NINH_KIEU_W_02_SUB_2026-10": "paid",
+        "PRJ_CAI_RANG_PHASE_1_W03_2026-09": "paid"
+      },
+      attendance: [
+        { id: "A1", projectId: "PRJ_NINH_KIEU", workerId: "W_LEG_01", date: "2026-10-10", units: 10, rateSnapshot: 500000 }
+      ],
+      advances: [
+        { id: "ADV1", projectId: "PRJ_NINH_KIEU", workerId: "W_LEG_01", date: "2026-10-05", amountVnd: 1000000, signedStatus: "signed" }
+      ],
+      materials: [],
+      cashTransactions: [
+        { id: "CSH_V1_INIT", projectId: "PRJ_NINH_KIEU", type: "in", amountVnd: 50000000, date: "2026-10-01" }
+      ]
+    };
+
+    const migrated = migrateStore(v1Fixture);
+
+    const wp1 = migrated.wagePayments.find(wp => wp.workerId === "W_LEG_01");
+    const wp2 = migrated.wagePayments.find(wp => wp.workerId === "W_02_SUB");
+    const wp3 = migrated.wagePayments.find(wp => wp.workerId === "W03");
+
+    const oldStore = store;
+    store = migrated;
+
+    const calc1 = calculateWorkerPayrollForPeriod("W_LEG_01", "PRJ_NINH_KIEU", "2026-10");
+    const ledger = getUnifiedCashLedger("PRJ_NINH_KIEU");
+    const hasFakeZeroVoucher = ledger.some(item => item.source === "Lương thợ" && item.amountOut === 0);
+
+    // Kích hoạt render để chụp màn hình đối chiếu đối soát
+    store.settings.selectedProjectId = "PRJ_NINH_KIEU";
+    store.settings.payrollPeriod = "2026-10";
+    renderAll();
+    switchMainTab("tab-money");
+    document.querySelector('.subtab-pill[data-subtab="payroll"]').click();
+
+    return {
+      wp1Match: wp1 && wp1.workerId === "W_LEG_01" && wp1.projectId === "PRJ_NINH_KIEU" && wp1.periodId === "2026-10",
+      wp2Match: wp2 && wp2.workerId === "W_02_SUB" && wp2.projectId === "PRJ_NINH_KIEU" && wp2.periodId === "2026-10",
+      wp3Match: wp3 && wp3.workerId === "W03" && wp3.projectId === "PRJ_CAI_RANG_PHASE_1" && wp3.periodId === "2026-09",
+      wp1NetPaidNull: wp1 && wp1.netPaid === null,
+      wp1LegacyFlag: wp1 && wp1.isLegacyMigration === true && wp1.requiresHistoricalReconciliation === true,
+      calc1IsPaid: calc1 ? calc1.isPaid : false,
+      calc1NetPayable: calc1 ? calc1.netPayable : -1,
+      hasFakeZeroVoucher,
+      ledgerCount: ledger.length
+    };
+  })()`);
+
+  assert(v1MigrationDetailedTest.wp1Match, "Parse chính xác PRJ_NINH_KIEU_W_LEG_01_2026-10 thành workerId='W_LEG_01' và projectId='PRJ_NINH_KIEU'");
+  assert(v1MigrationDetailedTest.wp2Match, "Parse chính xác PRJ_NINH_KIEU_W_02_SUB_2026-10 thành workerId='W_02_SUB' và projectId='PRJ_NINH_KIEU'");
+  assert(v1MigrationDetailedTest.wp3Match, "Parse chính xác PRJ_CAI_RANG_PHASE_1_W03_2026-09 thành workerId='W03' và projectId='PRJ_CAI_RANG_PHASE_1'");
+  assert(v1MigrationDetailedTest.wp1NetPaidNull, "Chứng từ di chuyển V1 không gán số tiền netPaid=0 (netPaid là null)");
+  assert(v1MigrationDetailedTest.wp1LegacyFlag, "Đánh dấu requiresHistoricalReconciliation=true cho chứng từ V1 thiếu số tiền thực chi");
+  assert(v1MigrationDetailedTest.calc1IsPaid, "Bảo toàn trạng thái đã trả lương (isPaid=true) cho thợ W_LEG_01");
+  assert(v1MigrationDetailedTest.calc1NetPayable === 0, "Chống chi trả trùng: netPayable=0 để không cho phép bấm chốt trả lần 2");
+  assert(!v1MigrationDetailedTest.hasFakeZeroVoucher, "Sổ quỹ KHÔNG TẠO CHỨNG TỪ TIỀN MẶT GIẢ 0 đ cho các khoản lương di chuyển từ V1");
+
+  await wait(400);
+  await captureScreenshot(path.join(ARTIFACT_DIR, 'audit_v1_migration_reconciliation.png'));
+
+  // ================= BÀI TEST 7.3: BUG 3 — LỊCH SỬ THỢ CHUYỂN CÔNG TRÌNH =================
+  console.log('\n--- BÀI TEST 7.3: BUG 3 — Lịch sử Thợ Chuyển Công Trình (W01 làm A tháng 9, sang B tháng 10) ---');
+  const workerTransferTest = await evaluate(`(() => {
+    const w01 = {
+      id: "W_TRANS_01",
+      name: "Nguyễn Văn Thợ Chuyển",
+      role: "Thợ xây chính",
+      dailyRate: 500000,
+      projectId: "PRJ_CAI_RANG",
+      assignments: [
+        { projectId: "PRJ_NINH_KIEU", startDate: "2026-09-01", endDate: "2026-09-30" },
+        { projectId: "PRJ_CAI_RANG", startDate: "2026-10-01", endDate: null }
+      ]
+    };
+
+    const testStore = {
+      ...createDefaultStore(),
+      isDefaultStore: false,
+      revision: 50,
+      settings: {
+        ...store.settings,
+        selectedProjectId: "PRJ_NINH_KIEU",
+        payrollPeriod: "2026-09",
+        selectedMonth: "2026-09",
+        selectedDate: "2026-09-15"
+      },
+      projects: [
+        { id: "PRJ_NINH_KIEU", name: "Nhà phố Ninh Kiều (Công trình A)", status: "active", startDate: "2026-09-01" },
+        { id: "PRJ_CAI_RANG", name: "Biệt thự Cái Răng (Công trình B)", status: "active", startDate: "2026-10-01" }
+      ],
+      workers: [w01],
+      attendance: [
+        // Tháng 9 tại A: 10 công
+        { id: "ATT_A_1", projectId: "PRJ_NINH_KIEU", workerId: "W_TRANS_01", date: "2026-09-10", units: 10, rateSnapshot: 500000 },
+        // Tháng 10 tại B: 8 công
+        { id: "ATT_B_1", projectId: "PRJ_CAI_RANG", workerId: "W_TRANS_01", date: "2026-10-10", units: 8, rateSnapshot: 500000 }
+      ],
+      advances: [
+        // Tháng 9 tại A: 1.000.000 đ
+        { id: "ADV_A_1", projectId: "PRJ_NINH_KIEU", workerId: "W_TRANS_01", date: "2026-09-15", amountVnd: 1000000, signedStatus: "signed", signatureType: "digital_ink", docRef: "REF_A" },
+        // Tháng 10 tại B: 500.000 đ
+        { id: "ADV_B_1", projectId: "PRJ_CAI_RANG", workerId: "W_TRANS_01", date: "2026-10-12", amountVnd: 500000, signedStatus: "signed", signatureType: "digital_ink", docRef: "REF_B" }
+      ],
+      wagePayments: [
+        // Tháng 9 tại A đã quyết toán: 4.000.000 đ
+        { id: "WPAY_A_1", projectId: "PRJ_NINH_KIEU", workerId: "W_TRANS_01", periodId: "2026-09", grossWage: 5000000, advanceDeducted: 1000000, netPaid: 4000000, paidDate: "2026-09-30" }
+      ],
+      cashTransactions: [],
+      materials: []
+    };
+
+    store = testStore;
+
+    // 1. Kiểm tra khi xem Công trình A tháng 9
+    const inPrjA_Sept = isWorkerActiveInProject(w01, "PRJ_NINH_KIEU", "2026-09");
+    const payrollA_Sept = calculateWorkerPayrollForPeriod("W_TRANS_01", "PRJ_NINH_KIEU", "2026-09");
+
+    // 2. Kiểm tra khi xem Công trình B tháng 9
+    const inPrjB_Sept = isWorkerActiveInProject(w01, "PRJ_CAI_RANG", "2026-09");
+    const payrollB_Sept = calculateWorkerPayrollForPeriod("W_TRANS_01", "PRJ_CAI_RANG", "2026-09");
+
+    // 3. Kiểm tra khi xem Công trình B tháng 10
+    const inPrjB_Oct = isWorkerActiveInProject(w01, "PRJ_CAI_RANG", "2026-10");
+    const payrollB_Oct = calculateWorkerPayrollForPeriod("W_TRANS_01", "PRJ_CAI_RANG", "2026-10");
+
+    // 4. Kiểm tra khi xem Công trình A tháng 10
+    const inPrjA_Oct = isWorkerActiveInProject(w01, "PRJ_NINH_KIEU", "2026-10");
+
+    return {
+      inPrjA_Sept,
+      payrollA_Sept_Units: payrollA_Sept ? payrollA_Sept.totalUnits : null,
+      payrollA_Sept_Gross: payrollA_Sept ? payrollA_Sept.grossWage : null,
+      payrollA_Sept_Adv: payrollA_Sept ? payrollA_Sept.periodAdvance : null,
+      payrollA_Sept_IsPaid: payrollA_Sept ? payrollA_Sept.isPaid : null,
+      payrollA_Sept_Net: payrollA_Sept ? payrollA_Sept.wagePayment?.netPaid : null,
+
+      inPrjB_Sept,
+      payrollB_Sept_Units: payrollB_Sept ? payrollB_Sept.totalUnits : null,
+
+      inPrjB_Oct,
+      payrollB_Oct_Units: payrollB_Oct ? payrollB_Oct.totalUnits : null,
+      payrollB_Oct_Gross: payrollB_Oct ? payrollB_Oct.grossWage : null,
+      payrollB_Oct_Adv: payrollB_Oct ? payrollB_Oct.periodAdvance : null,
+      payrollB_Oct_NetPayable: payrollB_Oct ? payrollB_Oct.netPayable : null,
+      payrollB_Oct_IsPaid: payrollB_Oct ? payrollB_Oct.isPaid : null,
+
+      inPrjA_Oct
+    };
+  })()`);
+
+  assert(workerTransferTest.inPrjA_Sept, "Công trình A (tháng 9) tra cứu được thợ W_TRANS_01");
+  assert(workerTransferTest.payrollA_Sept_Units === 10, "Công trình A (tháng 9) tính đúng 10 công (5.000.000 đ lương gộp)");
+  assert(workerTransferTest.payrollA_Sept_Adv === 1000000, "Công trình A (tháng 9) tính đúng 1.000.000 đ tạm ứng");
+  assert(workerTransferTest.payrollA_Sept_IsPaid && workerTransferTest.payrollA_Sept_Net === 4000000, "Công trình A (tháng 9) hiển thị đã quyết toán lương 4.000.000 đ");
+
+  assert(!workerTransferTest.inPrjB_Sept, "Công trình B (tháng 9) HOÀN TOÀN KHÔNG HIỂN THỊ thợ W_TRANS_01");
+  assert(workerTransferTest.payrollB_Sept_Units === 0, "Công trình B (tháng 9) không bị tính lẫn công của Công trình A");
+
+  assert(workerTransferTest.inPrjB_Oct, "Công trình B (tháng 10) hiển thị thợ W_TRANS_01 sau khi chuyển công trình");
+  assert(workerTransferTest.payrollB_Oct_Units === 8, "Công trình B (tháng 10) tính đúng 8 công thuộc B");
+  assert(workerTransferTest.payrollB_Oct_Adv === 500000, "Công trình B (tháng 10) chỉ khấu trừ 500.000 đ tạm ứng phát sinh tại B");
+  assert(workerTransferTest.payrollB_Oct_NetPayable === 3500000, "Công trình B (tháng 10) thực lĩnh chờ tất toán là 3.500.000 đ (Không nhân đôi tiền)");
+
+  assert(!workerTransferTest.inPrjA_Oct, "Công trình A (tháng 10) không hiển thị thợ W_TRANS_01 vì đã chuyển sang B");
+
+  // Chụp ảnh màn hình bảng lương thợ chuyển công trình:
+  // 1. Chụp bảng lương Công trình A tháng 9
+  await evaluate(`(() => {
+    store.settings.selectedProjectId = "PRJ_NINH_KIEU";
+    store.settings.payrollPeriod = "2026-09";
+    renderAll();
+    switchMainTab("tab-money");
+    document.querySelector('.subtab-pill[data-subtab="payroll"]').click();
+  })()`);
+  await wait(400);
+  await captureScreenshot(path.join(ARTIFACT_DIR, 'audit_worker_transferred_projectA_sept.png'));
+
+  // 2. Chụp bảng lương Công trình B tháng 10
+  await evaluate(`(() => {
+    store.settings.selectedProjectId = "PRJ_CAI_RANG";
+    store.settings.payrollPeriod = "2026-10";
+    renderAll();
+    switchMainTab("tab-money");
+    document.querySelector('.subtab-pill[data-subtab="payroll"]').click();
+  })()`);
+  await wait(400);
+  await captureScreenshot(path.join(ARTIFACT_DIR, 'audit_worker_transferred_projectB_oct.png'));
+
   // ================= BÀI TEST 8: REAL DOM INTERACTIONS (USER-LIKE AUTOMATION) =================
   console.log('\n--- BÀI TEST 8: Real DOM Automation & User Interaction ---');
   // Chuyển tab qua DOM click
