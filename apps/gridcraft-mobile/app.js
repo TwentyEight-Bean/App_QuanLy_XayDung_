@@ -1,881 +1,1221 @@
 /**
- * GRIDCRAFT CONTRACTOR MOBILE — S23 ULTRA EDITION
- * Data management, S-Pen Signature, Attendance, Payroll, Material & Cashflow
+ * GRIDCRAFT 2.0 — SỔ CÔNG TRÌNH (SAMSUNG GALAXY S23 ULTRA EDITION)
+ * Bảo toàn lịch sử, hỗ trợ đa dự án, rate_snapshot, S-Pen Palm Rejection & Visual Payslip
  */
 
-// ==========================================
-// 1. STATE & SAMPLE DATA
-// ==========================================
-const DB_KEY = 'gridcraft_contractor_db_v1';
+const STORAGE_KEY = "GRIDCRAFT_SO_CONG_TRINH_V2";
 
-const DEFAULT_STATE = {
-  theme: 'dark',
-  currentDate: new Date().toISOString().split('T')[0],
-  workers: [
-    { id: 'w1', name: 'Anh Ba Hưng', phone: '0908123456', role: 'Thợ chính (Xây/Tô)', rate: 500000 },
-    { id: 'w2', name: 'Chú Tám Đạt', phone: '0913987654', role: 'Thợ chính (Xây/Tô)', rate: 480000 },
-    { id: 'w3', name: 'Tuấn Còi',    phone: '0977223344', role: 'Thợ phụ (Trộn hồ/Khuân vác)', rate: 350000 },
-    { id: 'w4', name: 'Hùng Sắt',    phone: '0988556677', role: 'Thợ sắt cốt pha', rate: 450000 },
-    { id: 'w5', name: 'Minh Điện',   phone: '0933445566', role: 'Thợ điện nước', rate: 500000 },
-    { id: 'w6', name: 'Lộc Sơn',     phone: '0944112233', role: 'Thợ sơn nước', rate: 420000 },
-    { id: 'w7', name: 'Văn Phụ',     phone: '0966778899', role: 'Thợ phụ', rate: 350000 },
-    { id: 'w8', name: 'Khánh Phụ',   phone: '0909001122', role: 'Thợ phụ', rate: 350000 }
-  ],
-  // Map of "date_workerId": 1.0 | 0.5 | 1.5 | 0
-  attendance: {
-    // Generated dynamically or loaded
-  },
-  advances: [
-    { id: 'a1', workerId: 'w3', workerName: 'Tuấn Còi', amount: 1000000, date: '2026-10-20', note: 'Ứng tiền đóng tiền nhà trọ', hasSig: true },
-    { id: 'a2', workerId: 'w1', workerName: 'Anh Ba Hưng', amount: 2000000, date: '2026-10-21', note: 'Gửi tiền về quê cho vợ', hasSig: true },
-    { id: 'a3', workerId: 'w4', workerName: 'Hùng Sắt', amount: 1500000, date: '2026-10-22', note: 'Ứng tiền sửa xe máy', hasSig: true }
-  ],
-  materials: [
-    { id: 'm1', name: 'Xi măng Hà Tiên PCB40', qty: 50, unit: 'Bao', price: 92000, total: 4600000, supplier: 'Vựa Bảy Cường', status: 'paid', date: '2026-10-18' },
-    { id: 'm2', name: 'Cát vàng tô trát', qty: 6, unit: 'Khối', price: 380000, total: 2280000, supplier: 'Vựa Bảy Cường', status: 'paid', date: '2026-10-19' },
-    { id: 'm3', name: 'Thép Pomina phi 10', qty: 80, unit: 'Cây', price: 135000, total: 10800000, supplier: 'Công ty Thép Việt', status: 'debt', date: '2026-10-21' },
-    { id: 'm4', name: 'Gạch tuynel 4 lỗ', qty: 4000, unit: 'Viên', price: 1200, total: 4800000, supplier: 'Lò gạch Tân Uyên', status: 'paid', date: '2026-10-22' }
-  ],
-  cashflow: {
-    ownerAdvances: 120000000, // Tiền chủ nhà đưa
-    otherExpenses: 1350000     // Xăng xe, ăn uống lặt vặt
-  }
-};
-
-let appState = loadState();
-
-function loadState() {
-  try {
-    const raw = localStorage.getItem(DB_KEY);
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    console.error('Failed to load localStorage', e);
-  }
-  return JSON.parse(JSON.stringify(DEFAULT_STATE));
-}
-
-function saveState() {
-  try {
-    localStorage.setItem(DB_KEY, JSON.stringify(appState));
-  } catch (e) {
-    console.error('Failed to save localStorage', e);
-  }
-  updateStats();
-}
-
-function formatVND(num) {
-  return new Intl.NumberFormat('vi-VN').format(num) + 'đ';
-}
-
-function formatDateVN(dateStr) {
-  if (!dateStr) return '';
-  const parts = dateStr.split('-');
-  if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
-  return dateStr;
-}
-
-// ==========================================
-// 2. DOM ELEMENTS
-// ==========================================
-const views = {
-  attendance: document.getElementById('viewAttendance'),
-  advance: document.getElementById('viewAdvance'),
-  payroll: document.getElementById('viewPayroll'),
-  materials: document.getElementById('viewMaterials'),
-  excel: document.getElementById('viewExcel')
-};
-
-const navItems = document.querySelectorAll('.bottom-nav .nav-item');
-const attendanceDateInput = document.getElementById('attendanceDate');
-const displayDateText = document.getElementById('displayDateText');
-const workerAttendanceList = document.getElementById('workerAttendanceList');
-const advanceRecordsList = document.getElementById('advanceRecordsList');
-const payrollList = document.getElementById('payrollList');
-const materialsList = document.getElementById('materialsList');
-
-// Modals
-const advanceModal = document.getElementById('advanceModal');
-const newWorkerModal = document.getElementById('newWorkerModal');
-const newMaterialModal = document.getElementById('newMaterialModal');
-const slipModal = document.getElementById('slipModal');
-
-// S-Pen Signature Canvas
-const sigCanvas = document.getElementById('signatureCanvas');
-const sigCtx = sigCanvas ? sigCanvas.getContext('2d') : null;
-let isDrawing = false;
-let hasSignature = false;
-
-// ==========================================
-// 3. INITIALIZATION
-// ==========================================
-document.addEventListener('DOMContentLoaded', () => {
-  initTheme();
-  initDate();
-  initNavigation();
-  initModals();
-  initSignaturePad();
-  initQuickCashNumpad();
-
-  renderAllViews();
-  updateStats();
-});
-
-function initTheme() {
-  if (appState.theme === 'light') {
-    document.body.classList.remove('dark-theme');
-    document.body.classList.add('light-theme');
-  }
-  document.getElementById('btnToggleTheme').addEventListener('click', () => {
-    if (document.body.classList.contains('dark-theme')) {
-      document.body.classList.remove('dark-theme');
-      document.body.classList.add('light-theme');
-      appState.theme = 'light';
-    } else {
-      document.body.classList.remove('light-theme');
-      document.body.classList.add('dark-theme');
-      appState.theme = 'dark';
-    }
-    saveState();
-  });
-}
-
-function initDate() {
-  const today = new Date().toISOString().split('T')[0];
-  appState.currentDate = today;
-  attendanceDateInput.value = today;
-  updateDateLabel(today);
-
-  attendanceDateInput.addEventListener('change', (e) => {
-    appState.currentDate = e.target.value;
-    updateDateLabel(e.target.value);
-    renderAttendanceList();
-  });
-
-  document.getElementById('btnPrevDate').addEventListener('click', () => {
-    const d = new Date(appState.currentDate);
-    d.setDate(d.getDate() - 1);
-    const newStr = d.toISOString().split('T')[0];
-    appState.currentDate = newStr;
-    attendanceDateInput.value = newStr;
-    updateDateLabel(newStr);
-    renderAttendanceList();
-  });
-
-  document.getElementById('btnNextDate').addEventListener('click', () => {
-    const d = new Date(appState.currentDate);
-    d.setDate(d.getDate() + 1);
-    const newStr = d.toISOString().split('T')[0];
-    appState.currentDate = newStr;
-    attendanceDateInput.value = newStr;
-    updateDateLabel(newStr);
-    renderAttendanceList();
-  });
-}
-
-function updateDateLabel(dateStr) {
-  const today = new Date().toISOString().split('T')[0];
-  const parts = dateStr.split('-');
-  const formatted = `${parts[2]}/${parts[1]}/${parts[0]}`;
-  if (dateStr === today) {
-    displayDateText.textContent = `Hôm nay, ${formatted}`;
-  } else {
-    displayDateText.textContent = formatted;
-  }
-}
-
-// Navigation (One UI bottom tabs)
-function initNavigation() {
-  navItems.forEach(item => {
-    item.addEventListener('click', () => {
-      const targetTab = item.dataset.tab;
-      navItems.forEach(n => n.classList.remove('active'));
-      item.classList.add('active');
-
-      Object.keys(views).forEach(k => {
-        if (k === targetTab) {
-          views[k].classList.add('active');
-        } else {
-          views[k].classList.remove('active');
-        }
-      });
-
-      // Re-render when switching tabs
-      if (targetTab === 'payroll') renderPayrollList();
-      if (targetTab === 'advance') renderAdvanceList();
-      if (targetTab === 'materials') renderMaterialsList();
-      if (targetTab === 'excel') updateCashflowView();
-    });
-  });
-}
-
-// ==========================================
-// 4. RENDERERS
-// ==========================================
-function renderAllViews() {
-  renderAttendanceList();
-  renderAdvanceList();
-  renderPayrollList();
-  renderMaterialsList();
-  updateCashflowView();
-}
-
-// Render Attendance (Chấm Công)
-function renderAttendanceList() {
-  workerAttendanceList.innerHTML = '';
-  const date = appState.currentDate;
-
-  appState.workers.forEach(w => {
-    const key = `${date}_${w.id}`;
-    // Default to 1.0 (Full day) if not marked
-    const currentVal = appState.attendance[key] !== undefined ? appState.attendance[key] : 1.0;
-    
-    // Save default if unset
-    if (appState.attendance[key] === undefined) {
-      appState.attendance[key] = 1.0;
-    }
-
-    const card = document.createElement('div');
-    card.className = `worker-card ${currentVal > 0 ? 'active-working' : ''}`;
-    card.innerHTML = `
-      <div class="worker-card-header">
-        <div class="worker-info">
-          <div class="worker-avatar">${w.name.charAt(0)}</div>
-          <div class="worker-name-group">
-            <span class="worker-name">${w.name}</span>
-            <span class="worker-role">${w.role} · ${w.phone}</span>
-          </div>
-        </div>
-        <div class="worker-rate-badge">${formatVND(w.rate)}/ngày</div>
-      </div>
-
-      <!-- Segmented Buttons for S23 Ultra Thumb -->
-      <div class="attendance-states">
-        <button type="button" class="state-btn ${currentVal === 1.0 ? 'active-1' : ''}" data-val="1.0">
-          <span class="val">1.0</span>
-          <span>Đi làm</span>
-        </button>
-        <button type="button" class="state-btn ${currentVal === 0.5 ? 'active-05' : ''}" data-val="0.5">
-          <span class="val">0.5</span>
-          <span>Nửa ngày</span>
-        </button>
-        <button type="button" class="state-btn ${currentVal === 1.5 ? 'active-15' : ''}" data-val="1.5">
-          <span class="val">1.5</span>
-          <span>Tăng ca</span>
-        </button>
-        <button type="button" class="state-btn ${currentVal === 0.0 ? 'active-0' : ''}" data-val="0.0">
-          <span class="val">0</span>
-          <span>Nghỉ</span>
-        </button>
-      </div>
-
-      <div class="worker-card-footer">
-        <span>Tổng công tuần: <b>${getWorkerWeekDays(w.id)} công</b></span>
-        <button type="button" class="btn-card-adv" data-wid="${w.id}">➕ Cho ứng tiền</button>
-      </div>
-    `;
-
-    // State button clicks
-    const btns = card.querySelectorAll('.state-btn');
-    btns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const val = parseFloat(btn.dataset.val);
-        appState.attendance[key] = val;
-        saveState();
-        renderAttendanceList();
-      });
-    });
-
-    // Quick advance click
-    card.querySelector('.btn-card-adv').addEventListener('click', () => {
-      openAdvanceModalForWorker(w.id);
-    });
-
-    workerAttendanceList.appendChild(card);
-  });
-
-  // Batch Mark All
-  document.getElementById('btnMarkAllFull').onclick = () => {
-    appState.workers.forEach(w => {
-      appState.attendance[`${date}_${w.id}`] = 1.0;
-    });
-    saveState();
-    renderAttendanceList();
+// Dữ liệu mẫu khởi tạo chuẩn thực tế (2 công trình đang làm, 1 đã hoàn thành)
+function createDefaultStore() {
+  const today = new Date().toISOString().slice(0, 10);
+  const currentMonth = today.slice(0, 7);
+  return {
+    version: 2,
+    settings: {
+      selectedProjectId: "PRJ_NINH_KIEU", // Hoặc "ALL"
+      periodMode: "month",                // "week" | "month" | "year"
+      selectedMonth: currentMonth,        // YYYY-MM
+      selectedDate: today,
+      hideBalance: false,
+      theme: "light"
+    },
+    projects: [
+      {
+        id: "PRJ_NINH_KIEU",
+        name: "Nhà phố Ninh Kiều",
+        owner: "Anh Hoàng",
+        location: "Q. Ninh Kiều, Cần Thơ",
+        status: "active",
+        startDate: "2026-09-01"
+      },
+      {
+        id: "PRJ_CAI_RANG",
+        name: "Biệt thự Cái Răng",
+        owner: "Chị Lan",
+        location: "KDC Nam Long, Cần Thơ",
+        status: "active",
+        startDate: "2026-10-01"
+      },
+      {
+        id: "PRJ_BINH_THUY",
+        name: "Nhà trọ Bình Thủy (2025)",
+        owner: "Chú Bảy",
+        location: "Bình Thủy, Cần Thơ",
+        status: "completed",
+        startDate: "2025-03-10"
+      }
+    ],
+    workers: [
+      { id: "W01", name: "Nguyễn Văn Ba", role: "Thợ cả (Thợ chính)", dailyRate: 500000, projectId: "PRJ_NINH_KIEU" },
+      { id: "W02", name: "Trần Văn Tư", role: "Thợ xây chính", dailyRate: 450000, projectId: "PRJ_NINH_KIEU" },
+      { id: "W03", name: "Lê Hoàng Nam", role: "Thợ sắt / Cốt pha", dailyRate: 450000, projectId: "PRJ_NINH_KIEU" },
+      { id: "W04", name: "Phạm Văn Út", role: "Thợ phụ hồ", dailyRate: 330000, projectId: "PRJ_NINH_KIEU" },
+      { id: "W05", name: "Võ Minh Tâm", role: "Thợ điện nước", dailyRate: 480000, projectId: "PRJ_CAI_RANG" },
+      { id: "W06", name: "Đặng Văn Hùng", role: "Thợ phụ hồ", dailyRate: 340000, projectId: "PRJ_CAI_RANG" }
+    ],
+    // Chấm công: lưu cứng rateSnapshot tại thời điểm chấm
+    attendance: [
+      { id: "ATT_1", projectId: "PRJ_NINH_KIEU", workerId: "W01", date: today, units: 1.0, rateSnapshot: 500000 },
+      { id: "ATT_2", projectId: "PRJ_NINH_KIEU", workerId: "W02", date: today, units: 1.0, rateSnapshot: 450000 },
+      { id: "ATT_3", projectId: "PRJ_NINH_KIEU", workerId: "W03", date: today, units: 1.5, rateSnapshot: 450000 },
+      { id: "ATT_4", projectId: "PRJ_NINH_KIEU", workerId: "W04", date: today, units: 0.5, rateSnapshot: 330000 }
+    ],
+    advances: [
+      {
+        id: "ADV_1",
+        projectId: "PRJ_NINH_KIEU",
+        workerId: "W01",
+        amountVnd: 500000,
+        date: today,
+        note: "Ứng tiền xăng & ăn sáng",
+        signedStatus: "signed",
+        signatureDataUrl: null,
+        signatureHash: "PRJ_NINH_KIEU|W01|500000|" + today
+      },
+      {
+        id: "ADV_2",
+        projectId: "PRJ_NINH_KIEU",
+        workerId: "W04",
+        amountVnd: 200000,
+        date: today,
+        note: "Gửi tiền về quê (Chưa ký)",
+        signedStatus: "unsigned",
+        signatureDataUrl: null,
+        signatureHash: null
+      }
+    ],
+    materials: [
+      {
+        id: "MAT_1",
+        projectId: "PRJ_NINH_KIEU",
+        name: "Xi măng Hà Tiên",
+        qty: 50,
+        unit: "Bao",
+        unitPrice: 92000,
+        vendor: "Đại lý VLXD Tư Thành",
+        paidStatus: "debt", // "debt" (Nợ đại lý) | "paid" (Đã trả tiền mặt)
+        date: today
+      },
+      {
+        id: "MAT_2",
+        projectId: "PRJ_NINH_KIEU",
+        name: "Cát vàng xây tô",
+        qty: 6,
+        unit: "Khối (m³)",
+        unitPrice: 380000,
+        vendor: "Bãi cát Sông Hậu",
+        paidStatus: "paid",
+        date: today
+      }
+    ],
+    cashTransactions: [
+      {
+        id: "CSH_1",
+        projectId: "PRJ_NINH_KIEU",
+        type: "in", // "in" (Chủ nhà ứng) | "out" (Chi lặt vặt)
+        amountVnd: 50000000,
+        category: "Chủ nhà tạm ứng đợt 1",
+        date: today
+      },
+      {
+        id: "CSH_2",
+        projectId: "PRJ_CAI_RANG",
+        type: "in",
+        amountVnd: 30000000,
+        category: "Chủ nhà ứng tiền móng",
+        date: today
+      }
+    ],
+    payrollStatus: {}, // key: `${projectId}_${workerId}_${YYYY-MM}` -> "paid"
+    auditLogs: []
   };
 }
 
-function getWorkerWeekDays(workerId) {
-  let count = 0;
-  // Calculate total days for worker in current month/recorded period
-  Object.keys(appState.attendance).forEach(k => {
-    if (k.endsWith(`_${workerId}`)) {
-      count += (appState.attendance[k] || 0);
-    }
-  });
-  return count;
+let store = loadStore();
+let undoSnapshot = null;
+let undoTimer = null;
+let currentAdvanceAmount = 500000;
+let activePayslipWorker = null;
+
+function loadStore() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return createDefaultStore();
+    const parsed = JSON.parse(raw);
+    return { ...createDefaultStore(), ...parsed };
+  } catch (e) {
+    return createDefaultStore();
+  }
 }
 
-// Render Advances (Tạm Ứng)
-function renderAdvanceList() {
-  advanceRecordsList.innerHTML = '';
-  let totalMonth = 0;
+function saveStore() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+}
 
-  if (appState.advances.length === 0) {
-    advanceRecordsList.innerHTML = `<div style="text-align:center; padding: 30px; color: var(--text-muted);">Chưa có phiếu ứng tiền nào.</div>`;
+// Định dạng tiền VND chuẩn
+function formatVND(num) {
+  const n = Math.round(Number(num) || 0);
+  return n.toLocaleString("vi-VN") + " đ";
+}
+
+// Đọc số tiền bằng chữ tiếng Việt (Chống bấm thừa số 0)
+function readMoneyVietnamese(amount) {
+  const n = Math.round(Number(amount) || 0);
+  if (n === 0) return "Không đồng";
+  if (n >= 1000000000) return (n / 1000000000).toFixed(2).replace(/\.00$/, "") + " tỷ đồng";
+  const trieu = Math.floor(n / 1000000);
+  const nghin = Math.floor((n % 1000000) / 1000);
+  let parts = [];
+  if (trieu > 0) parts.push(`${trieu} triệu`);
+  if (nghin > 0) parts.push(`${nghin} nghìn`);
+  return (parts.join(" ") + " đồng").replace(/^./, c => c.toUpperCase());
+}
+
+// Kiểm tra ngày có nằm trong kỳ đang chọn không
+function isInSelectedPeriod(dateStr) {
+  if (!dateStr) return false;
+  const mode = store.settings.periodMode;
+  const selMonth = store.settings.selectedMonth; // YYYY-MM
+  if (mode === "month") {
+    return dateStr.startsWith(selMonth);
+  }
+  if (mode === "year") {
+    return dateStr.startsWith(selMonth.slice(0, 4));
+  }
+  // Chế độ Tuần: +/- 3 ngày quanh selectedDate
+  const target = new Date(store.settings.selectedDate).getTime();
+  const cur = new Date(dateStr).getTime();
+  const diffDays = Math.abs(cur - target) / (1000 * 3600 * 24);
+  return diffDays <= 3.5;
+}
+
+function matchesProject(itemProjectId) {
+  const sel = store.settings.selectedProjectId;
+  return sel === "ALL" || itemProjectId === sel;
+}
+
+// Tính toán tài chính chuẩn xác (Tách biệt Tồn quỹ tiền mặt và Công nợ vật tư)
+function calculateFinancials() {
+  // 1. Tồn quỹ lũy kế (Từ đầu đến nay của công trình đang chọn)
+  let totalCashIn = 0;
+  let totalCashOut = 0;
+
+  // 2. Phát sinh trong kỳ
+  let periodCashIn = 0;
+  let periodCashOut = 0;
+  let periodAttendanceUnits = 0;
+  let periodAdvanceTotal = 0;
+  let openMaterialDebt = 0;
+
+  store.cashTransactions.forEach(tx => {
+    if (!matchesProject(tx.projectId)) return;
+    if (tx.type === "in") {
+      totalCashIn += tx.amountVnd;
+      if (isInSelectedPeriod(tx.date)) periodCashIn += tx.amountVnd;
+    } else {
+      totalCashOut += tx.amountVnd;
+      if (isInSelectedPeriod(tx.date)) periodCashOut += tx.amountVnd;
+    }
+  });
+
+  store.advances.forEach(adv => {
+    if (!matchesProject(adv.projectId)) return;
+    totalCashOut += adv.amountVnd;
+    if (isInSelectedPeriod(adv.date)) {
+      periodCashOut += adv.amountVnd;
+      periodAdvanceTotal += adv.amountVnd;
+    }
+  });
+
+  store.materials.forEach(mat => {
+    if (!matchesProject(mat.projectId)) return;
+    const cost = mat.qty * mat.unitPrice;
+    if (mat.paidStatus === "paid") {
+      totalCashOut += cost;
+      if (isInSelectedPeriod(mat.date)) periodCashOut += cost;
+    } else {
+      // Nợ đại lý KHÔNG trừ vào tiền mặt
+      openMaterialDebt += cost;
+    }
+  });
+
+  store.attendance.forEach(att => {
+    if (!matchesProject(att.projectId)) return;
+    if (isInSelectedPeriod(att.date)) {
+      periodAttendanceUnits += Number(att.units || 0);
+    }
+  });
+
+  return {
+    cumulativeBalance: totalCashIn - totalCashOut,
+    periodCashIn,
+    periodCashOut,
+    periodAttendanceUnits,
+    periodAdvanceTotal,
+    openMaterialDebt
+  };
+}
+
+// ================= RENDER TOÀN BỘ GIAO DIỆN =================
+function renderAll() {
+  document.documentElement.setAttribute("data-theme", store.settings.theme);
+  renderHeaderAndPeriod();
+  renderOverviewTab();
+  renderAttendanceTab();
+  renderMoneyTab();
+  renderProjectsTab();
+}
+
+function renderHeaderAndPeriod() {
+  const selId = store.settings.selectedProjectId;
+  const prj = store.projects.find(p => p.id === selId);
+  const nameEl = document.getElementById("headerProjectName");
+  const floatNameEl = document.getElementById("floatingProjectShortName");
+  const dotEl = document.getElementById("headerProjectDot");
+
+  if (selId === "ALL" || !prj) {
+    nameEl.textContent = "Tất cả công trình (" + store.projects.length + ")";
+    floatNameEl.textContent = "Tất cả CT";
+    dotEl.style.background = "#0D7A5F";
+  } else {
+    nameEl.textContent = prj.name;
+    floatNameEl.textContent = prj.name.replace("Nhà phố ", "").replace("Biệt thự ", "");
+    dotEl.style.background = prj.status === "completed" ? "#64748B" : "#0D7A5F";
+  }
+
+  // Nhãn kỳ
+  const [y, m] = store.settings.selectedMonth.split("-");
+  const labelEl = document.getElementById("currentPeriodLabel");
+  if (store.settings.periodMode === "month") labelEl.textContent = `Tháng ${m}/${y}`;
+  else if (store.settings.periodMode === "year") labelEl.textContent = `Năm ${y}`;
+  else labelEl.textContent = `Tuần (${store.settings.selectedDate.slice(5)})`;
+
+  document.querySelectorAll(".period-tab").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.mode === store.settings.periodMode);
+  });
+}
+
+function renderOverviewTab() {
+  const fin = calculateFinancials();
+  const hide = store.settings.hideBalance;
+
+  document.getElementById("privacyEyeIcon").textContent = hide ? "🙈 Đang ẩn" : "👁️ Hiện";
+  document.getElementById("heroCashBalance").textContent = hide
+    ? "••••••••• đ"
+    : formatVND(fin.cumulativeBalance);
+
+  document.getElementById("heroPeriodSummary").textContent = hide
+    ? "Trong kỳ: ••••••••"
+    : `Trong kỳ: Thu +${formatVND(fin.periodCashIn)} • Chi -${formatVND(fin.periodCashOut)}`;
+
+  const activeWorkers = store.workers.filter(w => matchesProject(w.projectId)).length;
+  document.getElementById("kpiTotalAttendance").textContent = `${fin.periodAttendanceUnits} công`;
+  document.getElementById("kpiWorkerCount").textContent = `${activeWorkers} thợ thuộc phạm vi`;
+
+  document.getElementById("kpiAdvancesAndDebt").textContent = hide
+    ? "•••••••• đ"
+    : formatVND(fin.periodAdvanceTotal + fin.openMaterialDebt);
+  document.getElementById("kpiDebtDetail").textContent =
+    `Ứng: ${(fin.periodAdvanceTotal / 1e6).toFixed(1)}tr • Nợ VT: ${(fin.openMaterialDebt / 1e6).toFixed(1)}tr`;
+
+  // Nhắc việc thông minh
+  const unsignedCount = store.advances.filter(a => matchesProject(a.projectId) && a.signedStatus === "unsigned").length;
+  const alertsEl = document.getElementById("overviewAlerts");
+  alertsEl.innerHTML = "";
+  if (unsignedCount > 0) {
+    alertsEl.innerHTML = `
+      <div class="notice-banner">
+        ⚠️ Có <strong>${unsignedCount} phiếu ứng tiền chưa ký tên</strong>. Chạm vào Sổ tiền để thợ ký bổ sung bằng S-Pen.
+      </div>
+    `;
+  }
+
+  // Danh sách công trình gọn
+  const listEl = document.getElementById("overviewProjectList");
+  listEl.innerHTML = store.projects.map(p => {
+    const wCount = store.workers.filter(w => w.projectId === p.id).length;
+    const isSel = store.settings.selectedProjectId === p.id;
+    return `
+      <div class="item-card" style="${isSel ? 'border-color: var(--brand-primary); border-width:2px;' : ''}">
+        <div class="item-card-row">
+          <div>
+            <div class="item-title">${p.name}</div>
+            <div class="item-sub">📍 ${p.location} • Chủ: ${p.owner} • 👷 ${wCount} thợ</div>
+          </div>
+          <span class="badge ${p.status === 'active' ? 'badge-green' : 'badge-amber'}">
+            ${p.status === 'active' ? 'Đang làm' : 'Đã xong'}
+          </span>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function renderAttendanceTab() {
+  const isAll = store.settings.selectedProjectId === "ALL";
+  document.getElementById("attendanceAllProjectsBanner").hidden = !isAll;
+  document.getElementById("attendanceStickyFooter").style.display = isAll ? "none" : "flex";
+
+  const dateStr = store.settings.selectedDate;
+  document.getElementById("attendanceDateInput").value = dateStr;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  document.getElementById("attendanceDateHuman").textContent =
+    dateStr === todayStr ? "Hôm nay" : `Ngày ${dateStr.split("-").reverse().join("/")}`;
+
+  const workers = store.workers.filter(w => matchesProject(w.projectId));
+  let count1 = 0, count05 = 0, count15 = 0, count0 = 0, countUnset = 0;
+
+  const listHtml = workers.map(w => {
+    const rec = store.attendance.find(
+      a => a.projectId === w.projectId && a.workerId === w.id && a.date === dateStr
+    );
+    const val = rec ? rec.units : null;
+    if (val === 1.0) count1++;
+    else if (val === 0.5) count05++;
+    else if (val === 1.5) count15++;
+    else if (val === 0) count0++;
+    else countUnset++;
+
+    const rateShown = rec ? rec.rateSnapshot : w.dailyRate;
+
+    return `
+      <div class="worker-att-card">
+        <div class="worker-att-top">
+          <div>
+            <div class="worker-name">${w.name}</div>
+            <div class="worker-role-rate">${w.role} • ${formatVND(rateShown)}/công</div>
+          </div>
+          <span class="badge ${val === null ? 'badge-amber' : 'badge-green'}">
+            ${val === null ? 'Chưa ghi' : val + ' công'}
+          </span>
+        </div>
+        <div class="att-pills-group">
+          <button class="att-pill-btn ${val === 1.0 ? 'active-1' : ''}" onclick="setWorkerAttendance('${w.id}', 1.0)">1.0 Đủ</button>
+          <button class="att-pill-btn ${val === 0.5 ? 'active-05' : ''}" onclick="setWorkerAttendance('${w.id}', 0.5)">0.5 Nửa</button>
+          <button class="att-pill-btn ${val === 1.5 ? 'active-15' : ''}" onclick="setWorkerAttendance('${w.id}', 1.5)">1.5 TC</button>
+          <button class="att-pill-btn ${val === 0 ? 'active-0' : ''}" onclick="setWorkerAttendance('${w.id}', 0)">Nghỉ</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+
+  document.getElementById("attendanceWorkerList").innerHTML =
+    listHtml || `<div class="item-card">Chưa có thợ nào trong công trình này.</div>`;
+
+  document.getElementById("attendanceSummaryStrip").textContent =
+    `Đủ công: ${count1} • Nửa: ${count05} • Tăng ca: ${count15} • Nghỉ: ${count0}` +
+    (countUnset > 0 ? ` • (Chưa chấm: ${countUnset})` : "");
+}
+
+// Chấm công 1 chạm cho từng thợ (Lưu cứng rateSnapshot)
+window.setWorkerAttendance = function(workerId, units) {
+  const w = store.workers.find(x => x.id === workerId);
+  if (!w) return;
+  const prj = store.projects.find(p => p.id === w.projectId);
+  if (prj && prj.status === "completed") {
+    alert("Công trình này đã hoàn thành (Chế độ chỉ đọc). Không thể sửa công!");
     return;
   }
 
-  // Newest first
-  const sorted = [...appState.advances].reverse();
-  sorted.forEach(adv => {
-    totalMonth += adv.amount;
-    const item = document.createElement('div');
-    item.className = 'advance-card';
-    item.innerHTML = `
-      <div class="adv-card-left">
-        <span class="adv-worker-name">${adv.workerName}</span>
-        <span class="adv-meta">📅 ${formatDateVN(adv.date)} · ${adv.note || 'Tạm ứng tiền mặt'}</span>
-      </div>
-      <div class="adv-card-right">
-        <span class="adv-amount">-${formatVND(adv.amount)}</span>
-        <span class="sig-badge">✍️ Đã ký nhận</span>
-      </div>
-    `;
-    advanceRecordsList.appendChild(item);
+  const dateStr = store.settings.selectedDate;
+  const existingIdx = store.attendance.findIndex(
+    a => a.projectId === w.projectId && a.workerId === w.id && a.date === dateStr
+  );
+
+  if (existingIdx >= 0) {
+    store.attendance[existingIdx].units = units;
+  } else {
+    store.attendance.push({
+      id: "ATT_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
+      projectId: w.projectId,
+      workerId: w.id,
+      date: dateStr,
+      units,
+      rateSnapshot: w.dailyRate
+    });
+  }
+  saveStore();
+  renderAll();
+};
+
+// Điểm danh cả đội 1 chạm + Cảnh báo ghi đè + Hoàn tác (Undo)
+document.getElementById("btnMarkAllFullDay").addEventListener("click", () => {
+  const prjId = store.settings.selectedProjectId;
+  if (prjId === "ALL") return;
+  const dateStr = store.settings.selectedDate;
+  const workers = store.workers.filter(w => w.projectId === prjId);
+
+  const alreadyMarked = store.attendance.some(
+    a => a.projectId === prjId && a.date === dateStr && a.units !== 1.0
+  );
+
+  if (alreadyMarked) {
+    const ok = confirm("Hôm nay đã có thợ được ghi Nửa công / Nghỉ / Tăng ca. Bạn có chắc muốn ghi đè tất cả thành 1.0 công?");
+    if (!ok) return;
+  }
+
+  // Lưu snapshot để Hoàn tác
+  undoSnapshot = JSON.parse(JSON.stringify(store.attendance));
+
+  workers.forEach(w => {
+    const idx = store.attendance.findIndex(
+      a => a.projectId === prjId && a.workerId === w.id && a.date === dateStr
+    );
+    if (idx >= 0) {
+      store.attendance[idx].units = 1.0;
+    } else {
+      store.attendance.push({
+        id: "ATT_" + Date.now() + "_" + w.id,
+        projectId: prjId,
+        workerId: w.id,
+        date: dateStr,
+        units: 1.0,
+        rateSnapshot: w.dailyRate
+      });
+    }
   });
 
-  document.getElementById('totalAdvancesMonth').textContent = formatVND(totalMonth);
+  saveStore();
+  renderAll();
+  showUndoSnackbar(`Đã chấm 1.0 công cho cả đội (${workers.length} thợ)`);
+});
+
+function showUndoSnackbar(msg) {
+  const bar = document.getElementById("undoSnackbar");
+  document.getElementById("undoMessage").textContent = msg;
+  bar.hidden = false;
+  if (undoTimer) clearTimeout(undoTimer);
+  undoTimer = setTimeout(() => {
+    bar.hidden = true;
+  }, 7000);
 }
 
-// Render Payroll (Tính Lương)
-function renderPayrollList() {
-  payrollList.innerHTML = '';
-  let grandTotalDays = 0;
-  let grandGross = 0;
-  let grandAdvances = 0;
+document.getElementById("btnUndoAction").addEventListener("click", () => {
+  if (undoSnapshot) {
+    store.attendance = undoSnapshot;
+    undoSnapshot = null;
+    saveStore();
+    renderAll();
+  }
+  document.getElementById("undoSnackbar").hidden = true;
+});
 
-  appState.workers.forEach(w => {
-    const totalDays = getWorkerWeekDays(w.id);
-    const grossSalary = totalDays * w.rate;
-    
-    // Sum advances for this worker
-    const workerAdvances = appState.advances
-      .filter(a => a.workerId === w.id)
-      .reduce((sum, a) => sum + a.amount, 0);
+// ================= RENDER SỔ TIỀN (4 PHÂN MỤC) =================
+function renderMoneyTab() {
+  // 1. Danh sách Tạm ứng
+  const advList = store.advances
+    .filter(a => matchesProject(a.projectId) && isInSelectedPeriod(a.date))
+    .slice()
+    .reverse();
 
-    const netSalary = Math.max(0, grossSalary - workerAdvances);
-
-    grandTotalDays += totalDays;
-    grandGross += grossSalary;
-    grandAdvances += workerAdvances;
-
-    const card = document.createElement('div');
-    card.className = 'payroll-card';
-    card.innerHTML = `
-      <div class="payroll-card-header">
-        <div>
-          <h4 style="font-size: 16px; font-weight: 700;">${w.name}</h4>
-          <span style="font-size: 12px; color: var(--text-muted);">${w.role}</span>
+  document.getElementById("advancesHistoryList").innerHTML = advList.map(a => {
+    const w = store.workers.find(x => x.id === a.workerId);
+    return `
+      <div class="item-card">
+        <div class="item-card-row">
+          <div>
+            <div class="item-title">${w ? w.name : 'Thợ'} — <span class="text-amber">${formatVND(a.amountVnd)}</span></div>
+            <div class="item-sub">📅 ${a.date} • ${a.note || 'Tạm ứng'}</div>
+          </div>
+          <span class="badge ${a.signedStatus === 'signed' ? 'badge-green' : 'badge-amber'}">
+            ${a.signedStatus === 'signed' ? '✍️ Đã ký S-Pen' : '⚠️ Chưa ký'}
+          </span>
         </div>
-        <div style="text-align: right;">
-          <span style="font-size: 11px; color: var(--text-muted);">THỰC LĨNH:</span>
-          <div style="font-size: 18px; font-weight: 800; font-family: var(--font-mono); color: var(--color-green);">
-            ${formatVND(netSalary)}
+        ${a.signatureDataUrl ? `<img src="${a.signatureDataUrl}" alt="Chữ ký" style="height:48px; margin-top:8px; border:1px solid #CBD5E1; border-radius:6px; background:#FFF;" />` : ''}
+      </div>
+    `;
+  }).join("") || `<div class="item-card">Chưa có phiếu ứng tiền nào trong kỳ này.</div>`;
+
+  // 2. Bảng lương tự động theo rateSnapshot
+  const workers = store.workers.filter(w => matchesProject(w.projectId));
+  document.getElementById("payrollWorkerList").innerHTML = workers.map(w => {
+    const attRecords = store.attendance.filter(
+      a => a.workerId === w.id && matchesProject(a.projectId) && isInSelectedPeriod(a.date)
+    );
+    const totalUnits = attRecords.reduce((s, r) => s + Number(r.units || 0), 0);
+    const grossWage = attRecords.reduce((s, r) => s + Number(r.units || 0) * Number(r.rateSnapshot || w.dailyRate), 0);
+
+    const advRecords = store.advances.filter(
+      a => a.workerId === w.id && matchesProject(a.projectId) && isInSelectedPeriod(a.date)
+    );
+    const totalAdv = advRecords.reduce((s, r) => s + Number(r.amountVnd || 0), 0);
+    const netPay = grossWage - totalAdv;
+
+    const payKey = `${w.projectId}_${w.id}_${store.settings.selectedMonth}`;
+    const isPaid = store.payrollStatus[payKey] === "paid";
+
+    return `
+      <div class="item-card">
+        <div class="item-card-row">
+          <div>
+            <div class="item-title">${w.name}</div>
+            <div class="item-sub">${w.role} • Tổng: <strong>${totalUnits} công</strong></div>
+          </div>
+          <span class="badge ${isPaid ? 'badge-green' : (netPay < 0 ? 'badge-red' : 'badge-blue')}">
+            ${isPaid ? '✅ Đã trả lương' : (netPay < 0 ? 'Dư ứng chuyển kỳ sau' : 'Chờ tất toán')}
+          </span>
+        </div>
+        <div style="margin: 10px 0; font-size:14px; display:flex; justify-content:space-between;">
+          <span>Lương gộp: <strong>${formatVND(grossWage)}</strong></span>
+          <span>Đã ứng: <strong class="text-amber">-${formatVND(totalAdv)}</strong></span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:8px; border-top:1px solid var(--border-subtle);">
+          <div>
+            <small style="color:var(--text-muted); font-weight:700;">THỰC LĨNH CÒN LẠI</small>
+            <div style="font-size:22px; font-weight:900; color:var(--brand-primary);">
+              ${netPay >= 0 ? formatVND(netPay) : 'Âm ' + formatVND(Math.abs(netPay))}
+            </div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="date-Step-btn" onclick="openVisualPayslip('${w.id}')">📤 Phiếu Zalo</button>
+            ${!isPaid && netPay > 0 ? `<button class="date-Step-btn" style="background:var(--brand-primary);color:#FFF;" onclick="markPayrollPaid('${w.id}')">Chốt trả</button>` : ''}
           </div>
         </div>
       </div>
+    `;
+  }).join("");
 
-      <div class="payroll-math-grid">
-        <div class="math-col">
-          <span>Tổng công:</span>
-          <strong>${totalDays} công</strong>
+  // 3. Vật tư
+  const mats = store.materials.filter(m => matchesProject(m.projectId));
+  document.getElementById("materialsHistoryList").innerHTML = mats.map(m => {
+    const total = m.qty * m.unitPrice;
+    return `
+      <div class="item-card">
+        <div class="item-card-row">
+          <div>
+            <div class="item-title">${m.name} (${m.qty} ${m.unit})</div>
+            <div class="item-sub">🏪 ${m.vendor} • ${formatVND(total)}</div>
+          </div>
+          <span class="badge ${m.paidStatus === 'paid' ? 'badge-green' : 'badge-red'}">
+            ${m.paidStatus === 'paid' ? 'Đã trả TM' : 'Đang nợ đại lý'}
+          </span>
         </div>
-        <div class="math-col">
-          <span>Lương gộp:</span>
-          <strong>${formatVND(grossSalary)}</strong>
-        </div>
-        <div class="math-col text-amber">
-          <span>Đã ứng:</span>
-          <strong>-${formatVND(workerAdvances)}</strong>
-        </div>
-      </div>
-
-      <div class="payroll-actions">
-        <button type="button" class="btn-zalo" data-wid="${w.id}">
-          💬 Gửi Zalo Cho Thợ
-        </button>
-        <button type="button" class="btn-detail" data-wid="${w.id}">
-          📄 Chi tiết
-        </button>
+        ${m.paidStatus === 'debt' ? `
+          <button class="date-Step-btn" style="margin-top:8px; width:100%;" onclick="settleMaterialDebt('${m.id}')">
+            💵 Đánh dấu Đã trả tiền mặt cho đại lý
+          </button>
+        ` : ''}
       </div>
     `;
+  }).join("");
 
-    // Gửi Zalo action
-    card.querySelector('.btn-zalo').addEventListener('click', () => {
-      sendZaloSlip(w, totalDays, grossSalary, workerAdvances, netSalary);
-    });
-
-    // Xem chi tiết
-    card.querySelector('.btn-detail').addEventListener('click', () => {
-      showSlipDetail(w, totalDays, grossSalary, workerAdvances, netSalary);
-    });
-
-    payrollList.appendChild(card);
-  });
-
-  // Update total banner
-  document.getElementById('payrollTotalDays').textContent = `${grandTotalDays} công`;
-  document.getElementById('payrollGross').textContent = formatVND(grandGross);
-  document.getElementById('payrollAdvances').textContent = `- ${formatVND(grandAdvances)}`;
-  document.getElementById('payrollNet').textContent = formatVND(Math.max(0, grandGross - grandAdvances));
-}
-
-// Render Materials (Vật Tư)
-function renderMaterialsList() {
-  materialsList.innerHTML = '';
-  let totalCost = 0;
-  let debtCost = 0;
-
-  appState.materials.forEach(m => {
-    totalCost += m.total;
-    if (m.status === 'debt') debtCost += m.total;
-
-    const card = document.createElement('div');
-    card.className = 'material-card';
-    card.innerHTML = `
-      <div>
-        <div style="font-weight: 700; font-size: 15px;">${m.name}</div>
-        <div style="font-size: 12px; color: var(--text-muted);">
-          ${m.qty} ${m.unit} x ${formatVND(m.price)} · ${m.supplier}
+  // 4. Thu chi
+  const txs = store.cashTransactions.filter(t => matchesProject(t.projectId));
+  document.getElementById("cashflowHistoryList").innerHTML = txs.map(t => `
+    <div class="item-card">
+      <div class="item-card-row">
+        <div>
+          <div class="item-title">${t.category}</div>
+          <div class="item-sub">📅 ${t.date}</div>
         </div>
-      </div>
-      <div style="text-align: right;">
-        <div style="font-size: 15px; font-weight: 700; font-family: var(--font-mono); color: var(--color-blue);">
-          ${formatVND(m.total)}
-        </div>
-        <span class="mat-status-tag ${m.status}">
-          ${m.status === 'paid' ? '💵 Đã trả' : '📝 Đang nợ'}
-        </span>
-      </div>
-    `;
-    materialsList.appendChild(card);
-  });
-
-  document.getElementById('matTotalCost').textContent = formatVND(totalCost);
-  document.getElementById('matDebtCost').textContent = formatVND(debtCost);
-}
-
-// Update Cashflow & Stats
-function updateStats() {
-  // Today attendance
-  const today = new Date().toISOString().split('T')[0];
-  let todayCount = 0;
-  appState.workers.forEach(w => {
-    if ((appState.attendance[`${today}_${w.id}`] || 0) > 0) todayCount++;
-  });
-  document.getElementById('statTodayWorkers').textContent = `${todayCount}/${appState.workers.length} Thợ`;
-
-  // Advances this week
-  const weekAdv = appState.advances.reduce((sum, a) => sum + a.amount, 0);
-  document.getElementById('statWeekAdvances').textContent = formatVND(weekAdv);
-
-  // Remaining Cash
-  const totalPaidMaterials = appState.materials
-    .filter(m => m.status === 'paid')
-    .reduce((sum, m) => sum + m.total, 0);
-
-  const totalPayrollPaid = appState.advances.reduce((sum, a) => sum + a.amount, 0);
-  const remaining = appState.cashflow.ownerAdvances - totalPaidMaterials - totalPayrollPaid - appState.cashflow.otherExpenses;
-  
-  document.getElementById('statCashFund').textContent = formatVND(remaining);
-  updateCashflowView();
-}
-
-function updateCashflowView() {
-  const totalPaidMaterials = appState.materials
-    .filter(m => m.status === 'paid')
-    .reduce((sum, m) => sum + m.total, 0);
-
-  const totalPayrollPaid = appState.advances.reduce((sum, a) => sum + a.amount, 0);
-  const remaining = appState.cashflow.ownerAdvances - totalPaidMaterials - totalPayrollPaid - appState.cashflow.otherExpenses;
-
-  const inEl = document.getElementById('cashIn');
-  if (inEl) inEl.textContent = formatVND(appState.cashflow.ownerAdvances);
-
-  const outPayEl = document.getElementById('cashOutPayroll');
-  if (outPayEl) outPayEl.textContent = `- ${formatVND(totalPayrollPaid)}`;
-
-  const outMatEl = document.getElementById('cashOutMat');
-  if (outMatEl) outMatEl.textContent = `- ${formatVND(totalPaidMaterials)}`;
-
-  const outOtherEl = document.getElementById('cashOutOther');
-  if (outOtherEl) outOtherEl.textContent = `- ${formatVND(appState.cashflow.otherExpenses)}`;
-
-  const remEl = document.getElementById('cashRemaining');
-  if (remEl) remEl.textContent = formatVND(remaining);
-}
-
-// ==========================================
-// 5. S-PEN SIGNATURE CANVAS
-// ==========================================
-function initSignaturePad() {
-  if (!sigCanvas || !sigCtx) return;
-
-  function resizeCanvas() {
-    const rect = sigCanvas.getBoundingClientRect();
-    sigCanvas.width = rect.width * window.devicePixelRatio;
-    sigCanvas.height = rect.height * window.devicePixelRatio;
-    sigCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
-    sigCtx.lineWidth = 2.5;
-    sigCtx.lineCap = 'round';
-    sigCtx.lineJoin = 'round';
-    sigCtx.strokeStyle = '#22d3ee'; // Vibrant Cyan S-Pen color
-  }
-
-  window.addEventListener('resize', resizeCanvas);
-  setTimeout(resizeCanvas, 300);
-
-  function getPos(e) {
-    const rect = sigCanvas.getBoundingClientRect();
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    return {
-      x: clientX - rect.left,
-      y: clientY - rect.top
-    };
-  }
-
-  function startDraw(e) {
-    e.preventDefault();
-    isDrawing = true;
-    hasSignature = true;
-    document.getElementById('sigHint').style.opacity = '0';
-    const pos = getPos(e);
-    sigCtx.beginPath();
-    sigCtx.moveTo(pos.x, pos.y);
-  }
-
-  function draw(e) {
-    if (!isDrawing) return;
-    e.preventDefault();
-    const pos = getPos(e);
-    sigCtx.lineTo(pos.x, pos.y);
-    sigCtx.stroke();
-  }
-
-  function stopDraw() {
-    isDrawing = false;
-  }
-
-  sigCanvas.addEventListener('mousedown', startDraw);
-  sigCanvas.addEventListener('mousemove', draw);
-  sigCanvas.addEventListener('mouseup', stopDraw);
-
-  sigCanvas.addEventListener('touchstart', startDraw, { passive: false });
-  sigCanvas.addEventListener('touchmove', draw, { passive: false });
-  sigCanvas.addEventListener('touchend', stopDraw);
-
-  document.getElementById('btnClearSig').addEventListener('click', () => {
-    sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
-    hasSignature = false;
-    document.getElementById('sigHint').style.opacity = '1';
-  });
-}
-
-// Quick Cash Numpad Chips
-function initQuickCashNumpad() {
-  const input = document.getElementById('advAmountInput');
-  let currentVal = 0;
-
-  document.querySelectorAll('.cash-chip[data-val]').forEach(chip => {
-    chip.addEventListener('click', () => {
-      const addVal = parseInt(chip.dataset.val, 10);
-      currentVal += addVal;
-      input.value = new Intl.NumberFormat('vi-VN').format(currentVal);
-    });
-  });
-
-  document.getElementById('btnClearCash').addEventListener('click', () => {
-    currentVal = 0;
-    input.value = '';
-  });
-}
-
-// ==========================================
-// 6. MODALS & FORMS
-// ==========================================
-function initModals() {
-  // Tạm ứng
-  document.getElementById('btnOpenNewAdvanceModal').addEventListener('click', () => {
-    openAdvanceModalForWorker();
-  });
-  document.getElementById('btnCloseAdvModal').addEventListener('click', () => {
-    advanceModal.classList.remove('open');
-  });
-
-  // Thêm thợ
-  document.getElementById('btnAddWorker').addEventListener('click', () => {
-    newWorkerModal.classList.add('open');
-  });
-  document.getElementById('btnCloseWorkerModal').addEventListener('click', () => {
-    newWorkerModal.classList.remove('open');
-  });
-
-  // Nhập vật tư
-  document.getElementById('btnOpenNewMaterialModal').addEventListener('click', () => {
-    newMaterialModal.classList.add('open');
-  });
-  document.getElementById('btnCloseMatModal').addEventListener('click', () => {
-    newMaterialModal.classList.remove('open');
-  });
-
-  document.getElementById('btnCloseSlipModal').addEventListener('click', () => {
-    slipModal.classList.remove('open');
-  });
-
-  // Payment radio toggle
-  document.querySelectorAll('input[name="matPayment"]').forEach(r => {
-    r.addEventListener('change', () => {
-      document.querySelectorAll('.radio-chip').forEach(c => c.classList.remove('active'));
-      r.closest('.radio-chip').classList.add('active');
-    });
-  });
-
-  // Save worker
-  document.getElementById('btnSaveWorker').addEventListener('click', () => {
-    const name = document.getElementById('newWorkerName').value.trim();
-    const phone = document.getElementById('newWorkerPhone').value.trim() || '090...';
-    const role = document.getElementById('newWorkerRole').value;
-    const rate = parseInt(document.getElementById('newWorkerRate').value, 10) || 450000;
-
-    if (!name) {
-      alert('Vui lòng nhập tên thợ!');
-      return;
-    }
-
-    const newW = {
-      id: 'w_' + Date.now(),
-      name,
-      phone,
-      role,
-      rate
-    };
-
-    appState.workers.push(newW);
-    // Mark today as working by default
-    appState.attendance[`${appState.currentDate}_${newW.id}`] = 1.0;
-
-    saveState();
-    renderAttendanceList();
-    newWorkerModal.classList.remove('open');
-    document.getElementById('newWorkerName').value = '';
-    alert(`Đã thêm thợ "${name}" thành công!`);
-  });
-
-  // Save advance
-  document.getElementById('btnSaveAdvance').addEventListener('click', () => {
-    const workerId = document.getElementById('advWorkerSelect').value;
-    const rawVal = document.getElementById('advAmountInput').value.replace(/\./g, '');
-    const amount = parseInt(rawVal, 10);
-    const note = document.getElementById('advNoteInput').value.trim() || 'Tạm ứng tiền mặt';
-
-    if (!amount || amount <= 0) {
-      alert('Vui lòng chọn số tiền ứng!');
-      return;
-    }
-
-    const worker = appState.workers.find(w => w.id === workerId);
-    const newAdv = {
-      id: 'a_' + Date.now(),
-      workerId,
-      workerName: worker ? worker.name : 'Thợ',
-      amount,
-      date: new Date().toISOString().split('T')[0],
-      note,
-      hasSig: hasSignature
-    };
-
-    appState.advances.push(newAdv);
-    saveState();
-    renderAdvanceList();
-    advanceModal.classList.remove('open');
-
-    // Reset form
-    document.getElementById('advAmountInput').value = '';
-    document.getElementById('advNoteInput').value = '';
-    if (sigCtx) sigCtx.clearRect(0, 0, sigCanvas.width, sigCanvas.height);
-    hasSignature = false;
-    document.getElementById('sigHint').style.opacity = '1';
-
-    alert(`Đã lưu phiếu ứng ${formatVND(amount)} cho ${newAdv.workerName}!`);
-  });
-
-  // Save material
-  document.getElementById('btnSaveMaterial').addEventListener('click', () => {
-    const name = document.getElementById('matNameInput').value.trim();
-    const qty = parseFloat(document.getElementById('matQtyInput').value) || 1;
-    const unit = document.getElementById('matUnitInput').value.trim() || 'Bao';
-    const price = parseFloat(document.getElementById('matPriceInput').value) || 0;
-    const supplier = document.getElementById('matSupplierInput').value.trim() || 'Đại lý';
-    const status = document.querySelector('input[name="matPayment"]:checked').value;
-
-    if (!name) {
-      alert('Vui lòng nhập tên vật tư!');
-      return;
-    }
-
-    const total = qty * price;
-    const newMat = {
-      id: 'm_' + Date.now(),
-      name,
-      qty,
-      unit,
-      price,
-      total,
-      supplier,
-      status,
-      date: new Date().toISOString().split('T')[0]
-    };
-
-    appState.materials.push(newMat);
-    saveState();
-    renderMaterialsList();
-    newMaterialModal.classList.remove('open');
-    document.getElementById('matNameInput').value = '';
-    alert(`Đã lưu phiếu vật tư: ${name} (${formatVND(total)})!`);
-  });
-}
-
-function openAdvanceModalForWorker(selectedWorkerId = null) {
-  const select = document.getElementById('advWorkerSelect');
-  select.innerHTML = '';
-  appState.workers.forEach(w => {
-    const opt = document.createElement('option');
-    opt.value = w.id;
-    opt.textContent = `${w.name} (${w.role})`;
-    if (selectedWorkerId && w.id === selectedWorkerId) {
-      opt.selected = true;
-    }
-    select.appendChild(opt);
-  });
-
-  advanceModal.classList.add('open');
-}
-
-// ==========================================
-// 7. ZALO SHARING & EXCEL EXPORT
-// ==========================================
-function sendZaloSlip(worker, totalDays, gross, advances, net) {
-  const text = `📋 PHIẾU LƯƠNG CÔNG TRÌNH\n` +
-    `👷 Thợ: ${worker.name} (${worker.role})\n` +
-    `--------------------------------\n` +
-    `▪️ Số ngày công: ${totalDays} công\n` +
-    `▪️ Đơn giá: ${formatVND(worker.rate)}/ngày\n` +
-    `▪️ Tổng lương gộp: ${formatVND(gross)}\n` +
-    `▪️ Đã tạm ứng: -${formatVND(advances)}\n` +
-    `================================\n` +
-    `💰 THỰC LĨNH CÒN LẠI: ${formatVND(net)}\n` +
-    `--------------------------------\n` +
-    `Xin cảm ơn anh/chú đã đồng hành cùng công trình!`;
-
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(text).then(() => {
-      alert(`Đã sao chép nội dung phiếu lương của ${worker.name} vào bộ nhớ tạm!\n\nBạn có thể mở Zalo và dán (Paste) để gửi cho thợ ngay.`);
-    });
-  } else {
-    alert(text);
-  }
-}
-
-function showSlipDetail(worker, totalDays, gross, advances, net) {
-  const content = document.getElementById('slipContent');
-  const workerAdvs = appState.advances.filter(a => a.workerId === worker.id);
-
-  content.innerHTML = `
-    <div style="background: var(--bg-card); padding: 16px; border-radius: var(--radius-md); margin-bottom: 14px;">
-      <h4 style="font-size: 17px; margin-bottom: 4px;">${worker.name}</h4>
-      <p style="font-size: 13px; color: var(--text-muted);">${worker.role} · SĐT: ${worker.phone}</p>
-      
-      <div style="margin-top: 12px; font-size: 14px;">
-        <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
-          <span>Tổng số công:</span>
-          <b>${totalDays} công</b>
-        </div>
-        <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
-          <span>Lương thỏa thuận:</span>
-          <b>${formatVND(worker.rate)}/ngày</b>
-        </div>
-        <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
-          <span>Tổng lương gộp:</span>
-          <b>${formatVND(gross)}</b>
-        </div>
-        <div style="display:flex; justify-content:space-between; color: var(--color-amber); margin-bottom: 8px;">
-          <span>Tổng tiền đã ứng:</span>
-          <b>-${formatVND(advances)}</b>
-        </div>
-        <div style="height: 1px; background: var(--border-subtle); margin: 8px 0;"></div>
-        <div style="display:flex; justify-content:space-between; font-size: 16px; font-weight: 800; color: var(--color-green);">
-          <span>THỰC LĨNH:</span>
-          <span>${formatVND(net)}</span>
-        </div>
+        <strong class="${t.type === 'in' ? 'text-brand' : 'text-danger'}" style="font-size:18px;">
+          ${t.type === 'in' ? '+' : '-'}${formatVND(t.amountVnd)}
+        </strong>
       </div>
     </div>
+  `).join("");
+}
 
-    <h5 style="margin-bottom: 8px; font-size: 14px;">Lịch sử tạm ứng của thợ này:</h5>
-    <div style="display:flex; flex-direction:column; gap: 8px;">
-      ${workerAdvs.length === 0 ? '<p style="color:var(--text-muted); font-size:13px;">Chưa tạm ứng khoản nào.</p>' : ''}
-      ${workerAdvs.map(a => `
-        <div style="background:var(--bg-card); padding: 10px 12px; border-radius:var(--radius-sm); display:flex; justify-content:space-between;">
-          <span>📅 ${formatDateVN(a.date)}: ${a.note}</span>
-          <b style="color:var(--color-amber);">-${formatVND(a.amount)}</b>
+window.markPayrollPaid = function(workerId) {
+  const w = store.workers.find(x => x.id === workerId);
+  if (!w) return;
+  const payKey = `${w.projectId}_${w.id}_${store.settings.selectedMonth}`;
+  store.payrollStatus[payKey] = "paid";
+  saveStore();
+  renderAll();
+};
+
+window.settleMaterialDebt = function(matId) {
+  const mat = store.materials.find(m => m.id === matId);
+  if (!mat) return;
+  mat.paidStatus = "paid";
+  saveStore();
+  renderAll();
+};
+
+// ================= KHUNG KÝ S-PEN (PALM REJECTION) & BÀN PHÍM TIỀN =================
+const spenCanvas = document.getElementById("spenCanvas");
+const spenCtx = spenCanvas ? spenCanvas.getContext("2d") : null;
+let isDrawing = false;
+let hasSignatureInk = false;
+let activePointerType = null;
+
+function initSpenCanvas() {
+  if (!spenCtx) return;
+  spenCtx.fillStyle = "#FFFFFF";
+  spenCtx.fillRect(0, 0, spenCanvas.width, spenCanvas.height);
+  spenCtx.strokeStyle = "#0F1715";
+  spenCtx.lineWidth = 2.6;
+  spenCtx.lineCap = "round";
+  spenCtx.lineJoin = "round";
+  hasSignatureInk = false;
+}
+
+if (spenCanvas) {
+  spenCanvas.addEventListener("pointerdown", e => {
+    // Nếu phát hiện bút S-Pen, ưu tiên tuyệt đối và chặn tỳ tay
+    if (e.pointerType === "pen") {
+      activePointerType = "pen";
+      document.getElementById("spenStatusText").textContent = "🖊️ Đang nhận nét bút S-Pen (Đã khóa chạm tay)";
+    } else if (activePointerType === "pen" && e.pointerType === "touch") {
+      return; // Chống chạm nhầm cạnh bàn tay khi đang cầm S-Pen
+    }
+
+    isDrawing = true;
+    hasSignatureInk = true;
+    const rect = spenCanvas.getBoundingClientRect();
+    const scaleX = spenCanvas.width / rect.width;
+    const scaleY = spenCanvas.height / rect.height;
+    spenCtx.beginPath();
+    spenCtx.moveTo((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+  });
+
+  spenCanvas.addEventListener("pointermove", e => {
+    if (!isDrawing) return;
+    if (activePointerType === "pen" && e.pointerType === "touch") return;
+    const rect = spenCanvas.getBoundingClientRect();
+    const scaleX = spenCanvas.width / rect.width;
+    const scaleY = spenCanvas.height / rect.height;
+    spenCtx.lineTo((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+    spenCtx.stroke();
+  });
+
+  window.addEventListener("pointerup", () => {
+    isDrawing = false;
+  });
+
+  document.getElementById("btnClearSignature").addEventListener("click", () => {
+    activePointerType = null;
+    initSpenCanvas();
+    document.getElementById("spenStatusText").textContent = "🖊️ Sẵn sàng nhận bút S-Pen hoặc ngón tay";
+  });
+}
+
+function updateAdvanceMoneyUI() {
+  document.getElementById("advAmountFormatted").textContent = formatVND(currentAdvanceAmount);
+  document.getElementById("advAmountWords").textContent = readMoneyVietnamese(currentAdvanceAmount);
+  const workerSel = document.getElementById("advWorkerSelect");
+  const wName = workerSel.options[workerSel.selectedIndex]?.text || "Thợ";
+  document.getElementById("spenLiveBanner").textContent =
+    `${wName} — Ký nhận ứng ${formatVND(currentAdvanceAmount)}`;
+}
+
+// Mở form ứng tiền
+function openAdvanceSheet() {
+  const workers = store.workers.filter(w => matchesProject(w.projectId));
+  const sel = document.getElementById("advWorkerSelect");
+  sel.innerHTML = workers.map(w => `<option value="${w.id}">${w.name} (${w.role})</option>`).join("");
+  currentAdvanceAmount = 500000;
+  document.getElementById("chkAllowUnsigned").checked = false;
+  initSpenCanvas();
+  updateAdvanceMoneyUI();
+  document.getElementById("sheetAdvanceForm").hidden = false;
+}
+
+document.getElementById("btnOpenAdvanceSheet").addEventListener("click", openAdvanceSheet);
+document.getElementById("btnQuickAdvance").addEventListener("click", () => {
+  switchMainTab("tab-money");
+  openAdvanceSheet();
+});
+document.getElementById("advWorkerSelect").addEventListener("change", updateAdvanceMoneyUI);
+
+// Xử lý phím cộng tiền nhanh
+document.querySelectorAll(".money-chip").forEach(chip => {
+  chip.addEventListener("click", () => {
+    currentAdvanceAmount += Number(chip.dataset.add);
+    updateAdvanceMoneyUI();
+  });
+});
+
+// Xử lý bàn phím số công trường (Custom Numpad)
+document.querySelectorAll(".custom-numpad button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const key = btn.dataset.digit;
+    let str = String(currentAdvanceAmount);
+    if (key === "BS") {
+      str = str.length > 1 ? str.slice(0, -1) : "0";
+    } else if (key === "000") {
+      str = str === "0" ? "0" : str + "000";
+    } else {
+      str = str === "0" ? key : str + key;
+    }
+    currentAdvanceAmount = Math.min(Number(str), 500000000);
+    updateAdvanceMoneyUI();
+  });
+});
+
+document.getElementById("btnSaveAdvance").addEventListener("click", () => {
+  const workerId = document.getElementById("advWorkerSelect").value;
+  const w = store.workers.find(x => x.id === workerId);
+  if (!w) return;
+
+  const allowUnsigned = document.getElementById("chkAllowUnsigned").checked;
+  if (!hasSignatureInk && !allowUnsigned) {
+    alert("Vui lòng đưa bút S-Pen cho thợ ký nhận, hoặc tích chọn 'Chưa ký' nếu thợ vắng mặt!");
+    return;
+  }
+
+  const today = store.settings.selectedDate;
+  const sigUrl = hasSignatureInk ? spenCanvas.toDataURL("image/png") : null;
+
+  store.advances.push({
+    id: "ADV_" + Date.now(),
+    projectId: w.projectId,
+    workerId: w.id,
+    amountVnd: currentAdvanceAmount,
+    date: today,
+    note: document.getElementById("advNoteInput").value.trim() || "Ứng tiền giữa tuần",
+    signedStatus: hasSignatureInk ? "signed" : "unsigned",
+    signatureDataUrl: sigUrl,
+    signatureHash: `${w.projectId}|${w.id}|${currentAdvanceAmount}|${today}`
+  });
+
+  saveStore();
+  document.getElementById("sheetAdvanceForm").hidden = true;
+  renderAll();
+});
+
+// ================= VẼ PHIẾU LƯƠNG ẢNH (VISUAL PAYSLIP CARD GỬI ZALO) =================
+window.openVisualPayslip = function(workerId) {
+  const w = store.workers.find(x => x.id === workerId);
+  if (!w) return;
+  activePayslipWorker = w;
+
+  const prj = store.projects.find(p => p.id === w.projectId);
+  const attRecords = store.attendance.filter(
+    a => a.workerId === w.id && isInSelectedPeriod(a.date)
+  );
+  const advRecords = store.advances.filter(
+    a => a.workerId === w.id && isInSelectedPeriod(a.date)
+  );
+
+  const totalUnits = attRecords.reduce((s, r) => s + Number(r.units || 0), 0);
+  const grossWage = attRecords.reduce((s, r) => s + Number(r.units || 0) * Number(r.rateSnapshot || w.dailyRate), 0);
+  const totalAdv = advRecords.reduce((s, r) => s + Number(r.amountVnd || 0), 0);
+  const netPay = grossWage - totalAdv;
+
+  const canvas = document.getElementById("payslipRenderCanvas");
+  const ctx = canvas.getContext("2d");
+
+  // Nền phiếu trắng sạch
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Header xanh công trình
+  ctx.fillStyle = "#0D7A5F";
+  ctx.fillRect(0, 0, canvas.width, 110);
+  ctx.fillStyle = "#FFFFFF";
+  ctx.font = "bold 28px sans-serif";
+  ctx.fillText("PHIẾU QUYẾT TOÁN LƯƠNG THỢ", 28, 50);
+  ctx.font = "18px sans-serif";
+  ctx.fillText(`Công trình: ${prj ? prj.name : ''} • Kỳ: ${store.settings.selectedMonth}`, 28, 85);
+
+  // Thông tin thợ
+  ctx.fillStyle = "#0F1715";
+  ctx.font = "bold 24px sans-serif";
+  ctx.fillText(`Họ tên thợ: ${w.name}`, 28, 160);
+  ctx.font = "18px sans-serif";
+  ctx.fillStyle = "#334155";
+  ctx.fillText(`Vai trò: ${w.role}  |  Đơn giá chuẩn: ${formatVND(w.dailyRate)}/công`, 28, 192);
+
+  // Khung tổng hợp công
+  ctx.fillStyle = "#F1F5F3";
+  ctx.fillRect(28, 215, canvas.width - 56, 130);
+  ctx.strokeStyle = "#CBD5E1";
+  ctx.strokeRect(28, 215, canvas.width - 56, 130);
+
+  ctx.fillStyle = "#0F1715";
+  ctx.font = "bold 20px sans-serif";
+  ctx.fillText(`1. Tổng ngày công trong kỳ: ${totalUnits} công`, 48, 255);
+  ctx.fillText(`2. Thành tiền lương gộp: ${formatVND(grossWage)}`, 48, 290);
+  ctx.fillStyle = "#B45309";
+  ctx.fillText(`3. Tổng tiền đã tạm ứng: -${formatVND(totalAdv)} (${advRecords.length} lần)`, 48, 325);
+
+  // Danh sách các lần ứng
+  ctx.fillStyle = "#0F1715";
+  ctx.font = "bold 18px sans-serif";
+  ctx.fillText("Chi tiết các khoản đã tạm ứng:", 28, 385);
+
+  let yPos = 420;
+  advRecords.slice(0, 4).forEach((adv, idx) => {
+    ctx.font = "17px sans-serif";
+    ctx.fillStyle = "#1E293B";
+    const statusTxt = adv.signedStatus === "signed" ? "[Đã ký S-Pen]" : "[Chưa ký]";
+    ctx.fillText(
+      `• Ngày ${adv.date}: ${formatVND(adv.amountVnd)} (${adv.note}) ${statusTxt}`,
+      36,
+      yPos
+    );
+    yPos += 34;
+  });
+
+  // Khung Thực lĩnh cuối cùng
+  ctx.fillStyle = "#D1FAE5";
+  ctx.fillRect(28, 640, canvas.width - 56, 120);
+  ctx.strokeStyle = "#0D7A5F";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(28, 640, canvas.width - 56, 120);
+
+  ctx.fillStyle = "#065F46";
+  ctx.font = "bold 20px sans-serif";
+  ctx.fillText("THỰC LĨNH CÒN NHẬN:", 48, 682);
+  ctx.font = "bold 38px sans-serif";
+  ctx.fillText(formatVND(netPay), 48, 732);
+
+  document.getElementById("sheetPayslipPreview").hidden = false;
+};
+
+// Chia sẻ ảnh Phiếu Lương qua Web Share API (Zalo) hoặc tải xuống
+document.getElementById("btnSharePayslipImage").addEventListener("click", async () => {
+  const canvas = document.getElementById("payslipRenderCanvas");
+  canvas.toBlob(async blob => {
+    if (!blob) return;
+    const file = new File([blob], "Phieu_Luong_GridCraft.png", { type: "image/png" });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({
+          title: "Phiếu Lương Công Trình",
+          text: `Phiếu lương của ${activePayslipWorker?.name || ''}`,
+          files: [file]
+        });
+        return;
+      } catch (e) {}
+    }
+    // Fallback tải ảnh nếu trình duyệt không hỗ trợ share file trực tiếp
+    downloadCanvasImage(canvas);
+  });
+});
+
+function downloadCanvasImage(canvas) {
+  const a = document.createElement("a");
+  a.href = canvas.toDataURL("image/png");
+  a.download = `Phieu_Luong_${activePayslipWorker?.name || 'Tho'}.png`;
+  a.click();
+}
+
+document.getElementById("btnDownloadPayslipPng").addEventListener("click", () => {
+  downloadCanvasImage(document.getElementById("payslipRenderCanvas"));
+});
+
+document.getElementById("btnCopyPayslipText").addEventListener("click", () => {
+  if (!activePayslipWorker) return;
+  const w = activePayslipWorker;
+  const msg = `[PHIẾU LƯƠNG CÔNG TRÌNH]\nThợ: ${w.name}\nĐơn giá: ${formatVND(w.dailyRate)}/công\nKỳ: ${store.settings.selectedMonth}\nĐã đối soát trên Sổ Công Trình GridCraft.`;
+  navigator.clipboard?.writeText(msg);
+  alert("Đã sao chép nội dung phiếu lương! Bạn có thể dán vào Zalo.");
+});
+
+// ================= QUẢN LÝ CÔNG TRÌNH & CHUYỂN ĐỔI =================
+function renderProjectsTab() {
+  const q = (document.getElementById("projectSearchInput").value || "").toLowerCase();
+  const list = store.projects.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    p.owner.toLowerCase().includes(q) ||
+    p.location.toLowerCase().includes(q)
+  );
+
+  document.getElementById("projectsManageList").innerHTML = list.map(p => {
+    const wCount = store.workers.filter(w => w.projectId === p.id).length;
+    return `
+      <div class="item-card">
+        <div class="item-card-row">
+          <div>
+            <div class="item-title">${p.name}</div>
+            <div class="item-sub">👤 Chủ nhà: ${p.owner} • 📍 ${p.location}</div>
+            <div class="item-sub">📅 Bắt đầu: ${p.startDate} • 👷 ${wCount} thợ</div>
+          </div>
+          <span class="badge ${p.status === 'active' ? 'badge-green' : 'badge-amber'}">
+            ${p.status === 'active' ? 'Đang làm' : 'Đã xong'}
+          </span>
         </div>
-      `).join('')}
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="date-Step-btn" style="flex:1;" onclick="selectProject('${p.id}')">🎯 Chọn làm việc</button>
+          <button class="date-Step-btn" onclick="toggleProjectArchive('${p.id}')">
+            ${p.status === 'active' ? '🔒 Chốt hoàn thành' : '🔓 Mở khóa'}
+          </button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+window.selectProject = function(prjId) {
+  store.settings.selectedProjectId = prjId;
+  saveStore();
+  document.getElementById("sheetProjectPicker").hidden = true;
+  renderAll();
+};
+
+window.toggleProjectArchive = function(prjId) {
+  const p = store.projects.find(x => x.id === prjId);
+  if (!p) return;
+  p.status = p.status === "active" ? "completed" : "active";
+  store.auditLogs.push({
+    time: new Date().toISOString(),
+    action: `Đổi trạng thái công trình ${p.name} sang ${p.status}`
+  });
+  saveStore();
+  renderAll();
+};
+
+// Mở Sheet chọn công trình (1 tay)
+function openProjectPicker() {
+  const container = document.getElementById("projectPickerList");
+  const isAll = store.settings.selectedProjectId === "ALL";
+  let html = `
+    <div class="item-card" onclick="selectProject('ALL')" style="cursor:pointer; ${isAll ? 'border:2px solid var(--brand-primary);' : ''}">
+      <div class="item-title">🌐 Xem Tất Cả Công Trình (${store.projects.length})</div>
+      <div class="item-sub">Tổng hợp dòng tiền, công nợ của toàn bộ công trình</div>
     </div>
   `;
-
-  slipModal.classList.add('open');
+  html += store.projects.map(p => {
+    const active = store.settings.selectedProjectId === p.id;
+    return `
+      <div class="item-card" onclick="selectProject('${p.id}')" style="cursor:pointer; ${active ? 'border:2px solid var(--brand-primary);' : ''}">
+        <div class="item-card-row">
+          <div>
+            <div class="item-title">${p.name}</div>
+            <div class="item-sub">${p.location} • Chủ: ${p.owner}</div>
+          </div>
+          <span class="badge ${p.status === 'active' ? 'badge-green' : 'badge-amber'}">
+            ${p.status === 'active' ? 'Đang làm' : 'Đã xong'}
+          </span>
+        </div>
+      </div>
+    `;
+  }).join("");
+  container.innerHTML = html;
+  document.getElementById("sheetProjectPicker").hidden = false;
 }
 
-// Export to Excel / CSV
-document.getElementById('btnExportExcel').addEventListener('click', exportExcel);
-document.getElementById('btnDownloadBackup').addEventListener('click', exportExcel);
+document.getElementById("btnOpenProjectSheet").addEventListener("click", openProjectPicker);
+document.getElementById("btnFloatingProject").addEventListener("click", openProjectPicker);
+document.getElementById("btnPickProjectForAtt").addEventListener("click", openProjectPicker);
 
-function exportExcel() {
-  let csvContent = "\uFEFF"; // UTF-8 BOM for Excel
-  csvContent += "BẢNG LƯƠNG & CHẤM CÔNG THỢ XÂY DỰNG\n";
-  csvContent += `Công trình: Biệt thự Vườn - Nhà Chú Ba\n`;
-  csvContent += `Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}\n\n`;
+// Thêm công trình mới
+document.getElementById("btnOpenNewProjectSheet")?.addEventListener("click", () => {
+  const name = prompt("Nhập tên công trình mới (VD: Nhà Chú Năm):");
+  if (!name) return;
+  const owner = prompt("Nhập tên chủ nhà:") || "Chủ nhà";
+  const location = prompt("Nhập địa điểm công trình:") || "Địa chỉ";
 
-  csvContent += "STT,Tên Thợ,Chức Vụ,Mức Lương/Ngày,Tổng Công,Tổng Lương Gộp,Tiền Đã Ứng,Thực Lĩnh Còn Lại\n";
-
-  appState.workers.forEach((w, idx) => {
-    const totalDays = getWorkerWeekDays(w.id);
-    const gross = totalDays * w.rate;
-    const adv = appState.advances.filter(a => a.workerId === w.id).reduce((s, a) => s + a.amount, 0);
-    const net = Math.max(0, gross - adv);
-
-    csvContent += `${idx + 1},"${w.name}","${w.role}",${w.rate},${totalDays},${gross},${adv},${net}\n`;
-  });
-
-  csvContent += "\n\nDANH SÁCH VẬT TƯ XÂY DỰNG\n";
-  csvContent += "STT,Tên Vật Tư,Số Lượng,Đơn Vị,Đơn Giá,Thành Tiền,Nhà Cung Cấp,Trạng Thái\n";
-  appState.materials.forEach((m, idx) => {
-    csvContent += `${idx + 1},"${m.name}",${m.qty},"${m.unit}",${m.price},${m.total},"${m.supplier}","${m.status === 'paid' ? 'Đã thanh toán' : 'Đang nợ'}"\n`;
-  });
-
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `BangLuong_VatTu_${new Date().toISOString().split('T')[0]}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-
-  alert('Đã xuất file bảng tính thành công! Bạn có thể mở file này trực tiếp bằng Microsoft Excel, Google Sheets hoặc GridCraft.');
-}
-
-// Open GridCraft WASM
-document.getElementById('btnOpenGridcraftWasm').addEventListener('click', () => {
-  window.open('/?sample=sales', '_blank');
+  const newPrj = {
+    id: "PRJ_" + Date.now(),
+    name,
+    owner,
+    location,
+    status: "active",
+    startDate: new Date().toISOString().slice(0, 10)
+  };
+  store.projects.push(newPrj);
+  store.settings.selectedProjectId = newPrj.id;
+  saveStore();
+  renderAll();
+  alert(`Đã tạo công trình "${name}" thành công!`);
 });
+
+// Thêm thợ mới
+document.getElementById("btnOpenAddWorkerModal")?.addEventListener("click", () => {
+  const prjId = store.settings.selectedProjectId === "ALL" ? store.projects[0].id : store.settings.selectedProjectId;
+  const name = prompt("Nhập tên thợ mới (VD: Anh Năm):");
+  if (!name) return;
+  const role = prompt("Nhập vai trò (Thợ chính, Thợ phụ, Thợ sơn...):") || "Thợ xây";
+  const rateStr = prompt("Nhập mức lương 1 ngày công (VND):", "450000");
+  const rate = Number(rateStr) || 450000;
+
+  store.workers.push({
+    id: "W" + (store.workers.length + 1),
+    name,
+    role,
+    dailyRate: rate,
+    projectId: prjId
+  });
+  saveStore();
+  renderAll();
+  alert(`Đã thêm thợ "${name}" thành công!`);
+});
+
+// Thu chi nhanh
+document.getElementById("btnOpenCashInSheet")?.addEventListener("click", () => {
+  const prjId = store.settings.selectedProjectId === "ALL" ? store.projects[0].id : store.settings.selectedProjectId;
+  const amountStr = prompt("Nhập số tiền chủ nhà tạm ứng (VND):", "20000000");
+  const amount = Number(amountStr);
+  if (!amount) return;
+  const note = prompt("Ghi chú đợt ứng:", "Chủ nhà ứng đợt mới") || "Chủ nhà ứng";
+
+  store.cashTransactions.push({
+    id: "CSH_" + Date.now(),
+    projectId: prjId,
+    type: "in",
+    amountVnd: amount,
+    category: note,
+    date: store.settings.selectedDate
+  });
+  saveStore();
+  renderAll();
+  alert("Đã ghi nhận tiền chủ nhà ứng!");
+});
+
+document.getElementById("btnOpenCashOutSheet")?.addEventListener("click", () => {
+  const prjId = store.settings.selectedProjectId === "ALL" ? store.projects[0].id : store.settings.selectedProjectId;
+  const amountStr = prompt("Nhập số tiền chi phí phát sinh (VND):", "500000");
+  const amount = Number(amountStr);
+  if (!amount) return;
+  const note = prompt("Lý do chi lặt vặt (Xăng xe, ăn uống, đồ điện...):", "Chi phí lặt vặt") || "Chi phát sinh";
+
+  store.cashTransactions.push({
+    id: "CSH_" + Date.now(),
+    projectId: prjId,
+    type: "out",
+    amountVnd: amount,
+    category: note,
+    date: store.settings.selectedDate
+  });
+  saveStore();
+  renderAll();
+  alert("Đã ghi nhận chi phí!");
+});
+
+// ================= NHẬP VẬT TƯ & XUẤT EXCEL (.XLSX) =================
+document.getElementById("btnOpenMaterialSheet").addEventListener("click", () => {
+  document.getElementById("sheetMaterialForm").hidden = false;
+});
+
+document.getElementById("btnSaveMaterial").addEventListener("click", () => {
+  const prjId = store.settings.selectedProjectId === "ALL"
+    ? store.projects[0].id
+    : store.settings.selectedProjectId;
+
+  store.materials.push({
+    id: "MAT_" + Date.now(),
+    projectId: prjId,
+    name: document.getElementById("matNameInput").value.trim() || "Vật tư xây dựng",
+    qty: Number(document.getElementById("matQtyInput").value) || 1,
+    unit: document.getElementById("matUnitSelect").value,
+    unitPrice: Number(document.getElementById("matPriceInput").value) || 0,
+    vendor: document.getElementById("matVendorInput").value.trim() || "Đại lý VLXD",
+    paidStatus: document.getElementById("matPaidStatus").value,
+    date: store.settings.selectedDate
+  });
+  saveStore();
+  document.getElementById("sheetMaterialForm").hidden = true;
+  renderAll();
+});
+
+// Xuất file Excel .xlsx thật với đa Sheet
+document.getElementById("btnExportExcel").addEventListener("click", () => {
+  if (typeof XLSX === "undefined") {
+    alert("Đang ngoại tuyến hoặc chưa tải thư viện Excel. Đang xuất bản sao lưu JSON thay thế.");
+    exportBackupJson();
+    return;
+  }
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.projects), "CongTrinh");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.workers), "DoiTho");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.attendance), "ChamCong");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.advances.map(a => ({
+    ...a,
+    signatureDataUrl: a.signedStatus === "signed" ? "[Đã có chữ ký S-Pen]" : "Chưa ký"
+  }))), "TamUng");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.materials), "VatTu");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.cashTransactions), "ThuChi");
+
+  XLSX.writeFile(wb, `So_Cong_Trinh_GridCraft_${store.settings.selectedDate}.xlsx`);
+});
+
+function exportBackupJson() {
+  const blob = new Blob([JSON.stringify(store, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `SaoLuu_SoCongTrinh_${store.settings.selectedDate}.json`;
+  a.click();
+}
+
+document.getElementById("btnBackupRestore").addEventListener("click", exportBackupJson);
+
+// ================= SỰ KIỆN ĐIỀU HƯỚNG & TIỆN ÍCH =================
+function switchMainTab(tabId) {
+  document.querySelectorAll(".tab-pane").forEach(p => p.classList.toggle("active", p.id === tabId));
+  document.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.tab === tabId));
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+document.querySelectorAll(".nav-item").forEach(btn => {
+  btn.addEventListener("click", () => switchMainTab(btn.dataset.tab));
+});
+
+document.querySelectorAll(".subtab-pill").forEach(pill => {
+  pill.addEventListener("click", () => {
+    document.querySelectorAll(".subtab-pill").forEach(p => p.classList.remove("active"));
+    document.querySelectorAll(".subtab-content").forEach(c => c.classList.remove("active"));
+    pill.classList.add("active");
+    document.getElementById("subtab-" + pill.dataset.subtab).classList.add("active");
+  });
+});
+
+document.querySelectorAll("[data-close]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.getElementById(btn.dataset.close).hidden = true;
+  });
+});
+
+document.getElementById("btnTogglePrivacy").addEventListener("click", () => {
+  store.settings.hideBalance = !store.settings.hideBalance;
+  saveStore();
+  renderOverviewTab();
+});
+
+document.getElementById("btnThemeToggle").addEventListener("click", () => {
+  store.settings.theme = store.settings.theme === "light" ? "dark" : "light";
+  saveStore();
+  renderAll();
+});
+
+document.getElementById("btnQuickAttendance").addEventListener("click", () => {
+  switchMainTab("tab-attendance");
+});
+
+// Chuyển ngày chấm công
+function stepDate(days) {
+  const d = new Date(store.settings.selectedDate);
+  d.setDate(d.getDate() + days);
+  store.settings.selectedDate = d.toISOString().slice(0, 10);
+  saveStore();
+  renderAll();
+}
+document.getElementById("btnPrevDay").addEventListener("click", () => stepDate(-1));
+document.getElementById("btnNextDay").addEventListener("click", () => stepDate(1));
+document.getElementById("attendanceDateInput").addEventListener("change", e => {
+  if (e.target.value) {
+    store.settings.selectedDate = e.target.value;
+    saveStore();
+    renderAll();
+  }
+});
+
+// Chuyển kỳ thời gian (< / >)
+function stepPeriod(delta) {
+  const [y, m] = store.settings.selectedMonth.split("-").map(Number);
+  let newD = new Date(y, m - 1 + delta, 1);
+  const newY = newD.getFullYear();
+  const newM = String(newD.getMonth() + 1).padStart(2, '0');
+  store.settings.selectedMonth = `${newY}-${newM}`;
+  saveStore();
+  renderAll();
+}
+document.getElementById("btnPrevPeriod")?.addEventListener("click", () => stepPeriod(-1));
+document.getElementById("btnNextPeriod")?.addEventListener("click", () => stepPeriod(1));
+
+// Bộ lọc kỳ Tuần / Tháng / Năm
+document.querySelectorAll(".period-tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    store.settings.periodMode = btn.dataset.mode;
+    saveStore();
+    renderAll();
+  });
+});
+
+document.getElementById("projectSearchInput")?.addEventListener("input", renderProjectsTab);
+
+// Khởi chạy lần đầu
+renderAll();

@@ -1,1223 +1,997 @@
-/* ========================================================
-   GRIDCRAFT CONTRACTOR MOBILE — TAILORED FOR SAMSUNG S23 ULTRA
-   Design System: Samsung One UI & AMOLED Rich Aesthetics
-   ======================================================== */
-
 :root {
-  --bg-primary: #0a0f18;
-  --bg-surface: #131d2c;
-  --bg-card: #1a2638;
-  --bg-card-hover: #22324a;
-  --border-subtle: rgba(255, 255, 255, 0.08);
-  --border-focus: #22d3ee;
+  /* === BẢNG MÀU CHỐNG CHÓI NẮNG CÔNG TRƯỜNG (DAY MODE DEFAULT) === */
+  --bg-app: #F1F5F3;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #F8FAFC;
+  --border-strong: #CBD5E1;
+  --border-subtle: #E2E8F0;
 
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-primary: #0F1715;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+  --text-on-brand: #FFFFFF;
 
-  --color-teal: #06b6d4;
-  --color-green: #10b981;
-  --color-green-bg: rgba(16, 185, 129, 0.15);
-  --color-amber: #f59e0b;
-  --color-amber-bg: rgba(245, 158, 11, 0.15);
-  --color-red: #ef4444;
-  --color-red-bg: rgba(239, 68, 68, 0.15);
-  --color-blue: #3b82f6;
-  --color-blue-bg: rgba(59, 130, 246, 0.15);
-  --color-purple: #a855f7;
+  --brand-primary: #0D7A5F;
+  --brand-primary-active: #065F46;
+  --brand-soft: #D1FAE5;
 
-  --font-main: 'Be Vietnam Pro', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --amber-warn: #B45309;
+  --amber-soft: #FEF3C7;
 
-  --radius-sm: 8px;
-  --radius-md: 14px;
-  --radius-lg: 20px;
-  --radius-full: 9999px;
+  --blue-overtime: #1D4ED8;
+  --blue-soft: #DBEAFE;
 
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.4);
-  --shadow-modal: 0 -8px 30px rgba(0, 0, 0, 0.6);
+  --danger-debt: #B91C1C;
+  --danger-soft: #FEE2E2;
 
-  --nav-height: 72px;
+  --touch-min: 48px;
+  --touch-primary: 54px;
+  --radius-card: 16px;
+  --radius-btn: 12px;
 }
 
-/* Light Theme Variables */
-body.light-theme {
-  --bg-primary: #f1f5f9;
-  --bg-surface: #ffffff;
-  --bg-card: #ffffff;
-  --bg-card-hover: #f8fafc;
-  --border-subtle: rgba(0, 0, 0, 0.08);
-  --border-focus: #0284c7;
+[data-theme="dark"] {
+  /* === AMOLED DARK MODE CHO SAMSUNG S23 ULTRA === */
+  --bg-app: #070B0A;
+  --bg-surface: #111917;
+  --bg-elevated: #182421;
+  --border-strong: #2D3F3B;
+  --border-subtle: #1E2D2A;
 
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
+  --text-primary: #F8FAFC;
+  --text-secondary: #CBD5E1;
+  --text-muted: #94A3B8;
 
-  --color-teal: #0891b2;
-  --color-green: #059669;
-  --color-green-bg: rgba(5, 150, 105, 0.12);
-  --color-amber: #d97706;
-  --color-amber-bg: rgba(217, 119, 6, 0.12);
-  --color-red: #dc2626;
-  --color-red-bg: rgba(220, 38, 38, 0.12);
-  --color-blue: #2563eb;
-  --color-blue-bg: rgba(37, 99, 235, 0.12);
-  --shadow-card: 0 4px 15px rgba(0, 0, 0, 0.06);
+  --brand-primary: #10B981;
+  --brand-primary-active: #059669;
+  --brand-soft: rgba(16, 185, 129, 0.2);
+
+  --amber-warn: #F59E0B;
+  --amber-soft: rgba(245, 158, 11, 0.2);
+
+  --blue-overtime: #60A5FA;
+  --blue-soft: rgba(96, 165, 250, 0.2);
+
+  --danger-debt: #F87171;
+  --danger-soft: rgba(248, 113, 113, 0.2);
 }
 
-/* Base Reset & Mobile Tuning */
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
   -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  line-height: 1.45;
+  overflow-x: hidden;
   user-select: none;
 }
 
-input, select, textarea {
-  user-select: auto;
-}
-
-html, body {
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  font-family: var(--font-main);
-  font-size: 15px;
-  line-height: 1.4;
-}
-
-/* Text Colors */
-.text-green { color: var(--color-green) !important; }
-.text-amber { color: var(--color-amber) !important; }
-.text-blue  { color: var(--color-blue) !important; }
-.text-red   { color: var(--color-red) !important; }
-
-/* Safe Area Insets for S23 Ultra */
-.safe-area-top {
-  height: env(safe-area-inset-top, 8px);
-  background: var(--bg-surface);
-}
-.safe-area-bottom {
-  height: env(safe-area-inset-bottom, 12px);
-  background: var(--bg-surface);
-}
-
-/* ========================================================
-   HEADER & TOP VIEWING ZONE
-   ======================================================== */
-.app-header {
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-subtle);
-  padding: 10px 16px 14px 16px;
-  box-shadow: var(--shadow-sm);
-  position: relative;
-  z-index: 10;
-}
-
-.header-top {
+.app-shell {
+  max-width: 480px;
+  margin: 0 auto;
+  min-height: 100dvh;
   display: flex;
+  flex-direction: column;
+  padding-bottom: 130px;
+}
+
+/* ================= TOP HEADER ================= */
+.top-bar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--bg-surface);
+  border-bottom: 1.5px solid var(--border-strong);
+  padding: 10px 14px;
+}
+
+.top-bar-row {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.project-selector {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: 1;
-  background: var(--bg-card);
-  padding: 6px 12px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border-subtle);
-}
-
-.project-badge {
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.project-dropdown {
-  background: transparent;
-  border: none;
-  color: var(--text-primary);
-  font-family: var(--font-main);
-  font-weight: 600;
-  font-size: 14px;
-  width: 100%;
-  outline: none;
-  cursor: pointer;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
   gap: 8px;
 }
 
-.icon-btn {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  font-size: 14px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  transition: all 0.2s ease;
-}
-
-.icon-btn.highlight {
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: #ffffff;
-  border: none;
-  box-shadow: 0 2px 10px rgba(16, 185, 129, 0.3);
-}
-
-.icon-btn:active {
-  transform: scale(0.96);
-}
-
-/* Quick Stats 3-Column Banner */
-.stats-banner {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-}
-
-.stat-card {
-  background: var(--bg-card);
-  padding: 10px 10px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-}
-
-.stat-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 2px;
-}
-
-.stat-val {
-  font-size: 14px;
-  font-weight: 700;
-  font-family: var(--font-mono);
-}
-
-/* ========================================================
-   SCROLLABLE CONTENT AREA
-   ======================================================== */
-.content-container {
-  height: calc(100vh - 150px - var(--nav-height) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 14px 16px 20px 16px;
-  -webkit-overflow-scrolling: touch;
-}
-
-.tab-view {
-  display: none;
-  animation: fadeIn 0.25s ease-out;
-}
-
-.tab-view.active {
-  display: block;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-/* View Header Row */
-.view-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 14px;
-}
-
-.view-header-row h2 {
-  font-size: 18px;
-  font-weight: 800;
-  letter-spacing: -0.3px;
-}
-
-.view-header-row .subtitle {
-  font-size: 12px;
-  color: var(--text-secondary);
-}
-
-.btn-primary-action {
-  background: linear-gradient(135deg, #0284c7, #0369a1);
-  color: #fff;
-  border: none;
-  padding: 9px 14px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
-  transition: transform 0.15s;
-}
-
-.btn-primary-action:active {
-  transform: scale(0.96);
-}
-
-.btn-secondary-action {
-  background: var(--bg-surface);
-  color: var(--text-primary);
-  border: 1px solid var(--border-subtle);
-  padding: 8px 12px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-/* ========================================================
-   VIEW 1: CHẤM CÔNG (ATTENDANCE)
-   ======================================================== */
-.date-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  padding: 6px 12px;
-  margin-bottom: 12px;
-}
-
-.date-nav-btn {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-  border-radius: var(--radius-sm);
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.current-date-wrap {
-  position: relative;
-  text-align: center;
-}
-
-.date-picker-input {
-  position: absolute;
-  opacity: 0;
-  inset: 0;
-  width: 100%;
-  cursor: pointer;
-}
-
-.display-date-text {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.quick-batch-bar {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 14px;
-}
-
-.batch-btn {
+.project-selector-btn {
   flex: 1;
-  background: var(--color-green-bg);
-  border: 1px solid var(--color-green);
-  color: var(--color-green);
-  padding: 12px 14px;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  font-weight: 700;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.batch-btn:active {
-  transform: scale(0.97);
-  background: var(--color-green);
-  color: #fff;
-}
-
-.batch-btn.outline {
-  flex: 0 0 auto;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-}
-
-/* Worker Cards */
-.worker-list {
-  display: flex;
-  flex-direction: column;
   gap: 10px;
+  background: var(--bg-elevated);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-btn);
+  padding: 8px 12px;
+  min-height: var(--touch-min);
+  text-align: left;
+  color: var(--text-primary);
+  cursor: pointer;
 }
 
-.worker-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  padding: 14px 16px;
-  box-shadow: var(--shadow-sm);
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  transition: border-color 0.2s;
-}
-
-.worker-card.active-working {
-  border-color: rgba(16, 185, 129, 0.4);
-}
-
-.worker-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.worker-info {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.worker-avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-  color: #ffffff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 800;
-  font-size: 18px;
+.project-badge-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--brand-primary);
   flex-shrink: 0;
 }
 
-.worker-name-group {
-  display: flex;
-  flex-direction: column;
+.project-selector-text {
+  flex: 1;
+  overflow: hidden;
 }
 
-.worker-name {
-  font-size: 16px;
+.project-selector-label {
+  display: block;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--text-primary);
-}
-
-.worker-role {
-  font-size: 12px;
   color: var(--text-muted);
+  letter-spacing: 0.4px;
 }
 
-.worker-rate-badge {
-  background: var(--bg-surface);
-  padding: 4px 10px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--border-subtle);
-  font-size: 12px;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  color: var(--color-amber);
+.project-selector-name {
+  display: block;
+  font-size: 17px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-/* 1-Touch Attendance State Segmented Buttons (Ultra Big for Thumb/S-Pen) */
-.attendance-states {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
+.top-actions {
+  display: flex;
   gap: 6px;
-  background: var(--bg-surface);
-  padding: 4px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-subtle);
 }
 
-.state-btn {
-  background: transparent;
+.icon-btn {
+  width: var(--touch-min);
+  height: var(--touch-min);
+  border-radius: var(--radius-btn);
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-elevated);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/* BỘ LỌC KỲ */
+.period-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  gap: 8px;
+}
+
+.period-mode-tabs {
+  display: flex;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 2px;
+}
+
+.period-tab {
   border: none;
-  padding: 10px 0;
-  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 6px 10px;
   font-size: 13px;
   font-weight: 700;
-  color: var(--text-secondary);
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  transition: all 0.2s ease;
-}
-
-.state-btn .val {
-  font-size: 15px;
-  font-weight: 800;
-}
-
-.state-btn.active-1 {
-  background: var(--color-green);
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.4);
-}
-
-.state-btn.active-05 {
-  background: var(--color-amber);
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
-}
-
-.state-btn.active-15 {
-  background: var(--color-blue);
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
-}
-
-.state-btn.active-0 {
-  background: var(--color-red);
-  color: #ffffff;
-  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
-}
-
-/* Quick Advance Action on Worker Card */
-.worker-card-footer {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-top: 6px;
-  border-top: 1px solid var(--border-subtle);
-  font-size: 12px;
-}
-
-.btn-card-adv {
-  background: transparent;
-  border: 1px dashed var(--color-amber);
-  color: var(--color-amber);
-  padding: 4px 10px;
-  border-radius: var(--radius-full);
-  font-size: 12px;
-  font-weight: 600;
+  border-radius: 8px;
   cursor: pointer;
 }
 
-/* ========================================================
-   VIEW 2: TẠM ỨNG (ADVANCES)
-   ======================================================== */
-.advance-summary-box {
-  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(245, 158, 11, 0.02));
-  border: 1px solid rgba(245, 158, 11, 0.3);
-  border-radius: var(--radius-lg);
-  padding: 14px 16px;
-  margin-bottom: 14px;
+.period-tab.active {
+  background: var(--brand-primary);
+  color: #FFFFFF;
 }
 
-.advance-summary-box .adv-stat {
+.period-nav {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  font-size: 14px;
+  gap: 6px;
 }
 
-.advance-summary-box .adv-stat strong {
-  font-size: 17px;
-  font-family: var(--font-mono);
-}
-
-.advance-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.advance-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 12px 16px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-}
-
-.adv-card-left {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.adv-worker-name {
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.adv-meta {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.adv-card-right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
-
-.adv-amount {
-  font-size: 16px;
-  font-weight: 800;
-  font-family: var(--font-mono);
-  color: var(--color-amber);
-}
-
-.sig-badge {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--color-green);
-  background: var(--color-green-bg);
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-}
-
-/* ========================================================
-   VIEW 3: BẢNG LƯƠNG (PAYROLL)
-   ======================================================== */
-.filter-pill-group {
-  display: flex;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-full);
-  padding: 3px;
-}
-
-.filter-pill-group .pill {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 5px 12px;
-  border-radius: var(--radius-full);
-  cursor: pointer;
-}
-
-.filter-pill-group .pill.active {
-  background: var(--bg-card);
+.period-arrow {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
   color: var(--text-primary);
-  font-weight: 700;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  font-weight: bold;
+  cursor: pointer;
 }
 
-.payroll-total-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  padding: 16px;
-  margin-bottom: 16px;
-  box-shadow: var(--shadow-card);
-}
-
-.payroll-total-card .row {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
+.period-label {
   font-size: 14px;
-}
-
-.payroll-total-card .row b {
-  font-family: var(--font-mono);
-}
-
-.payroll-total-card .divider {
-  height: 1px;
-  background: var(--border-subtle);
-  margin: 12px 0;
-}
-
-.payroll-total-card .big-total {
-  font-size: 15px;
-  font-weight: 800;
-  align-items: center;
-  margin-bottom: 0;
-}
-
-.payroll-total-card .big-total .amount {
-  font-size: 20px;
-  font-weight: 800;
-  font-family: var(--font-mono);
-}
-
-.payroll-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.payroll-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  padding: 14px 16px;
-}
-
-.payroll-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.payroll-math-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  background: var(--bg-surface);
-  padding: 10px;
-  border-radius: var(--radius-md);
-  margin-bottom: 12px;
+  font-weight: 700;
+  min-width: 105px;
   text-align: center;
 }
 
-.payroll-math-grid .math-col span {
-  font-size: 11px;
-  color: var(--text-muted);
+/* ================= MAIN CONTENT ================= */
+.main-content {
+  padding: 14px;
+  flex: 1;
+}
+
+.tab-pane {
+  display: none;
+}
+
+.tab-pane.active {
   display: block;
 }
 
-.payroll-math-grid .math-col strong {
-  font-size: 13px;
-  font-family: var(--font-mono);
+/* HERO CARD & CON MẮT ẨN TIỀN */
+.hero-card {
+  background: var(--bg-surface);
+  border: 2px solid var(--brand-primary);
+  border-radius: var(--radius-card);
+  padding: 16px;
+  margin-bottom: 14px;
 }
 
-.payroll-actions {
+.hero-header {
   display: flex;
-  gap: 8px;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.btn-zalo {
-  flex: 1;
-  background: #0068ff;
-  color: #fff;
-  border: none;
-  padding: 9px 12px;
-  border-radius: var(--radius-md);
+.hero-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--text-secondary);
+  letter-spacing: 0.5px;
+}
+
+.privacy-toggle-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-strong);
+  color: var(--text-primary);
+  padding: 4px 10px;
+  border-radius: 999px;
   font-size: 13px;
   font-weight: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
   cursor: pointer;
 }
 
-.btn-detail {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-  padding: 9px 14px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
+.hero-amount {
+  font-size: 32px;
+  font-weight: 900;
+  color: var(--brand-primary);
+  font-variant-numeric: tabular-nums;
+  margin: 6px 0;
+}
+
+.hero-sub {
+  font-size: 14px;
   font-weight: 600;
-  cursor: pointer;
+  color: var(--text-secondary);
 }
 
-/* ========================================================
-   VIEW 4: VẬT LIỆU (MATERIALS)
-   ======================================================== */
-.material-summary-cards {
+/* KPI GRID */
+.kpi-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin-bottom: 14px;
 }
 
-.m-card {
+.kpi-card {
   background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  padding: 12px;
 }
 
-.m-card span {
-  font-size: 12px;
-  color: var(--text-muted);
+.kpi-label {
   display: block;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--text-muted);
 }
 
-.m-card strong {
+.kpi-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 800;
+  margin: 4px 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.text-amber { color: var(--amber-warn); }
+.text-danger { color: var(--danger-debt); }
+.text-brand { color: var(--brand-primary); }
+
+.kpi-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* QUICK ACTIONS */
+.quick-actions-card {
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  padding: 14px;
+  margin-bottom: 14px;
+}
+
+.section-heading {
   font-size: 16px;
-  font-family: var(--font-mono);
+  font-weight: 800;
+  margin-bottom: 10px;
 }
 
-.material-list {
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.action-big-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  min-height: 64px;
+  border-radius: var(--radius-btn);
+  border: 1.5px solid transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.action-big-btn.primary {
+  background: var(--brand-soft);
+  border-color: var(--brand-primary);
+  color: var(--text-primary);
+}
+
+.action-big-btn.amber {
+  background: var(--amber-soft);
+  border-color: var(--amber-warn);
+  color: var(--text-primary);
+}
+
+.action-icon {
+  font-size: 24px;
+}
+
+.action-text strong {
+  display: block;
+  font-size: 15px;
+}
+
+.action-text small {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+/* CARD LISTS */
+.section-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--brand-primary);
+  font-weight: 700;
+  font-size: 14px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.card-list {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.material-card {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 12px 16px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.mat-status-tag {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  font-weight: 600;
-}
-
-.mat-status-tag.paid {
-  background: var(--color-green-bg);
-  color: var(--color-green);
-}
-
-.mat-status-tag.debt {
-  background: var(--color-amber-bg);
-  color: var(--color-amber);
-}
-
-/* ========================================================
-   VIEW 5: SỔ QUỸ & EXCEL
-   ======================================================== */
-.cashflow-card {
+.item-card {
   background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  padding: 16px;
-  margin-bottom: 16px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  padding: 14px;
 }
 
-.cashflow-card h3 {
-  font-size: 16px;
-  font-weight: 700;
-  margin-bottom: 14px;
-}
-
-.cash-row {
+.item-card-row {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 10px;
-  font-size: 14px;
+  align-items: flex-start;
+  gap: 8px;
 }
 
-.cash-row b {
-  font-family: var(--font-mono);
-}
-
-.cash-row.big-total {
-  font-size: 15px;
+.item-title {
+  font-size: 17px;
   font-weight: 800;
-  margin-bottom: 0;
+}
+
+.item-sub {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.badge-green { background: var(--brand-soft); color: var(--brand-primary); }
+.badge-amber { background: var(--amber-soft); color: var(--amber-warn); }
+.badge-blue { background: var(--blue-soft); color: var(--blue-overtime); }
+.badge-red { background: var(--danger-soft); color: var(--danger-debt); }
+
+/* ================= CHẤM CÔNG 1 CHẠM (S-PEN PILLS) ================= */
+.date-navigator-card {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  padding: 10px;
+  margin-bottom: 10px;
 }
 
-.cash-row.big-total .amount {
-  font-size: 20px;
-  font-weight: 800;
-  font-family: var(--font-mono);
+.date-Step-btn {
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-weight: 700;
+  cursor: pointer;
 }
 
-.excel-preview-box {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  padding: 18px 16px;
+.date-current-box {
   text-align: center;
 }
 
-.excel-preview-box h4 {
+.date-native-picker {
   font-size: 16px;
-  font-weight: 700;
-  margin-bottom: 6px;
+  font-weight: 800;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  text-align: center;
 }
 
-.excel-preview-box p {
+.date-human-tag {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--brand-primary);
+}
+
+.attendance-summary-strip {
+  position: sticky;
+  top: 106px;
+  z-index: 20;
+  background: var(--brand-soft);
+  border: 1.5px solid var(--brand-primary);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 800;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.worker-att-card {
+  background: var(--bg-surface);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-card);
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.worker-att-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.worker-name {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.worker-role-rate {
   font-size: 13px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
+}
+
+.att-pills-group {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.att-pill-btn {
+  min-height: 46px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.att-pill-btn.active-1 {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: #FFFFFF;
+}
+
+.att-pill-btn.active-05 {
+  background: var(--amber-warn);
+  border-color: var(--amber-warn);
+  color: #FFFFFF;
+}
+
+.att-pill-btn.active-15 {
+  background: var(--blue-overtime);
+  border-color: var(--blue-overtime);
+  color: #FFFFFF;
+}
+
+.att-pill-btn.active-0 {
+  background: var(--danger-debt);
+  border-color: var(--danger-debt);
+  color: #FFFFFF;
+}
+
+.bottom-sticky-cta {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.btn-god-mode {
+  flex: 2;
+  min-height: var(--touch-primary);
+  background: var(--brand-primary);
+  color: #FFFFFF;
+  border: none;
+  border-radius: var(--radius-btn);
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.btn-secondary-add {
+  flex: 1;
+  min-height: var(--touch-primary);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-btn);
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* ================= SỔ TIỀN & SUB-TABS ================= */
+.subtab-pills {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
   margin-bottom: 14px;
 }
 
-.btn-excel-view {
-  background: linear-gradient(135deg, #10b981, #047857);
-  color: #fff;
-  border: none;
-  padding: 12px 20px;
-  border-radius: var(--radius-md);
-  font-size: 14px;
-  font-weight: 700;
+.subtab-pill {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 800;
   cursor: pointer;
-  box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
 }
 
-/* ========================================================
-   BOTTOM NAVIGATION BAR (SAMSUNG ONE UI THUMB ZONE)
-   ======================================================== */
+.subtab-pill.active {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+  color: #FFFFFF;
+}
+
+.subtab-content { display: none; }
+.subtab-content.active { display: block; }
+
+.subtab-top-action {
+  margin-bottom: 14px;
+}
+
+.subtab-top-action.two-cols, .two-cols-gap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.btn-primary-full, .btn-submit-primary {
+  width: 100%;
+  min-height: var(--touch-primary);
+  background: var(--brand-primary);
+  color: #FFFFFF;
+  border: none;
+  border-radius: var(--radius-btn);
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.btn-outline-full {
+  width: 100%;
+  min-height: var(--touch-min);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-btn);
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* ================= BOTTOM NAVIGATION & FLOATING PILL ================= */
+.floating-project-pill {
+  position: fixed;
+  bottom: 76px;
+  right: 16px;
+  z-index: 35;
+  background: var(--text-primary);
+  color: var(--bg-surface);
+  border: 2px solid var(--brand-primary);
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
 .bottom-nav {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  height: var(--nav-height);
+  max-width: 480px;
+  margin: 0 auto;
+  height: 68px;
   background: var(--bg-surface);
-  border-top: 1px solid var(--border-subtle);
+  border-top: 1.5px solid var(--border-strong);
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  align-items: center;
-  z-index: 100;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.4);
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  grid-template-columns: repeat(4, 1fr);
+  z-index: 40;
 }
 
 .nav-item {
-  background: transparent;
   border: none;
-  height: 100%;
+  background: transparent;
+  color: var(--text-muted);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  color: var(--text-muted);
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.nav-icon {
-  font-size: 22px;
-  transition: transform 0.2s ease;
-}
-
-.nav-label {
-  font-size: 11px;
-  font-weight: 600;
 }
 
 .nav-item.active {
-  color: var(--color-teal);
+  color: var(--brand-primary);
+  font-weight: 900;
 }
 
-.nav-item.active .nav-icon {
-  transform: translateY(-2px) scale(1.1);
-}
+.nav-icon { font-size: 20px; }
 
-.nav-item:active {
-  transform: scale(0.92);
-}
-
-/* ========================================================
-   MODAL BOTTOM SHEETS (ONE UI BOTTOM DRAG SHEET)
-   ======================================================== */
-.modal-overlay {
+/* ================= BOTTOM SHEETS & CUSTOM NUMPAD + S-PEN ================= */
+.sheet-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(4px);
-  z-index: 200;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 60;
   display: flex;
   align-items: flex-end;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.25s ease;
+  justify-content: center;
 }
 
-.modal-overlay.open {
-  opacity: 1;
-  pointer-events: auto;
-}
+.sheet-backdrop[hidden] { display: none !important; }
 
-.modal-sheet {
+.bottom-sheet {
   width: 100%;
-  max-height: 88vh;
+  max-width: 480px;
+  max-height: 92dvh;
   background: var(--bg-surface);
-  border-top-left-radius: var(--radius-lg);
-  border-top-right-radius: var(--radius-lg);
-  border-top: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-modal);
-  transform: translateY(100%);
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  border-top-left-radius: 22px;
+  border-top-right-radius: 22px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  animation: slideUp 0.2s ease-out;
 }
 
-.modal-overlay.open .modal-sheet {
-  transform: translateY(0);
+@keyframes slideUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
 }
 
-.modal-handle {
-  width: 44px;
-  height: 5px;
-  background: var(--text-muted);
-  opacity: 0.4;
-  border-radius: var(--radius-full);
-  margin: 10px auto 4px auto;
-}
-
-.modal-header {
+.sheet-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 20px 14px 20px;
-  border-bottom: 1px solid var(--border-subtle);
+  padding: 14px 16px;
+  border-bottom: 1.5px solid var(--border-strong);
 }
 
-.modal-header h3 {
-  font-size: 17px;
+.sheet-close {
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
   font-weight: 800;
-}
-
-.btn-close-modal {
-  background: var(--bg-card);
-  border: none;
-  color: var(--text-muted);
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius-full);
-  font-size: 15px;
-  font-weight: 700;
   cursor: pointer;
 }
 
-.modal-body {
-  padding: 16px 20px 24px 20px;
+.sheet-body {
+  padding: 16px;
   overflow-y: auto;
-  max-height: calc(88vh - 70px);
-}
-
-/* Form Controls */
-.form-label {
-  display: block;
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-secondary);
-  margin: 12px 0 6px 0;
-}
-
-.form-label:first-child {
-  margin-top: 0;
-}
-
-.form-input {
-  width: 100%;
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
-  font-size: 15px;
-  font-family: var(--font-main);
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.form-input:focus {
-  border-color: var(--border-focus);
-}
-
-.form-row-2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
-.amount-input-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
+.field-label {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text-secondary);
 }
 
-.amount-large {
-  font-size: 24px !important;
-  font-weight: 800 !important;
-  font-family: var(--font-mono) !important;
-  color: var(--color-amber) !important;
-  padding-right: 36px !important;
-}
-
-.currency-tag {
-  position: absolute;
-  right: 14px;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-muted);
-}
-
-/* Quick Cash Numpad Chips */
-.quick-cash-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-top: 10px;
-}
-
-.cash-chip {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-  border-radius: var(--radius-sm);
-  padding: 10px 0;
-  font-size: 13px;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.cash-chip:active {
-  transform: scale(0.95);
-  background: var(--color-amber);
-  color: #fff;
-}
-
-.cash-chip.clear-chip {
-  color: var(--color-red);
-  border-color: rgba(239, 68, 68, 0.3);
-}
-
-/* Payment Type Toggle */
-.payment-type-toggle {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  margin-top: 6px;
-}
-
-.radio-chip {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
+.form-input, .form-select, .search-input {
+  width: 100%;
+  min-height: 48px;
   padding: 10px 12px;
-  border-radius: var(--radius-md);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 12px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
 }
 
-.radio-chip input {
-  display: none;
+/* CUSTOM MONEY BOX & NUMPAD */
+.money-display-box {
+  background: var(--brand-soft);
+  border: 2px solid var(--brand-primary);
+  border-radius: 14px;
+  padding: 10px 14px;
+  text-align: right;
 }
 
-.radio-chip.active {
-  border-color: var(--color-teal);
-  background: rgba(6, 182, 212, 0.1);
-  color: var(--color-teal);
+.money-numeric {
+  font-size: 28px;
+  font-weight: 900;
+  color: var(--brand-primary);
+  font-variant-numeric: tabular-nums;
 }
 
-/* ========================================================
-   SAMSUNG S-PEN SIGNATURE PAD
-   ======================================================== */
-.signature-section {
-  margin: 16px 0;
-}
-
-.sig-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 6px;
-}
-
-.sig-title {
+.money-words {
   font-size: 13px;
   font-weight: 700;
   color: var(--text-secondary);
 }
 
-.btn-sig-clear {
-  background: transparent;
-  border: none;
-  color: var(--color-red);
-  font-size: 12px;
-  font-weight: 600;
+.quick-money-chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+
+.money-chip {
+  flex-shrink: 0;
+  min-height: 40px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--brand-primary);
+  background: var(--bg-surface);
+  color: var(--brand-primary);
+  font-weight: 800;
+  font-size: 14px;
   cursor: pointer;
 }
 
-.sig-canvas-wrap {
-  position: relative;
-  width: 100%;
-  height: 150px;
-  background: #000000;
-  border: 1px dashed rgba(255, 255, 255, 0.2);
-  border-radius: var(--radius-md);
+.custom-numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.custom-numpad button {
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 20px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.custom-numpad button.key-accent {
+  background: var(--brand-soft);
+  color: var(--brand-primary);
+}
+
+.custom-numpad button.key-warn {
+  background: var(--danger-soft);
+  color: var(--danger-debt);
+  font-size: 16px;
+}
+
+/* KHUNG KÝ S-PEN CHỐNG CHẠM NHẦM */
+.spen-signature-container {
+  margin: 4px 12px; /* Lùi mép cong S23 Ultra */
+  border: 2px dashed var(--brand-primary);
+  border-radius: 16px;
+  padding: 10px;
+  background: var(--bg-elevated);
+}
+
+.spen-receipt-banner {
+  background: var(--amber-soft);
+  color: var(--amber-warn);
+  font-weight: 800;
+  font-size: 14px;
+  padding: 8px;
+  border-radius: 8px;
+  text-align: center;
+  margin-bottom: 8px;
+}
+
+.spen-canvas-wrapper {
+  background: #FFFFFF;
+  border: 1.5px solid #94A3B8;
+  border-radius: 12px;
   overflow: hidden;
+  touch-action: none; /* Chặn cuộn trang khi đặt bút S-Pen ký */
+}
+
+#spenCanvas {
+  width: 100%;
+  height: 170px;
+  display: block;
   touch-action: none;
 }
 
-body.light-theme .sig-canvas-wrap {
-  background: #f8fafc;
-  border-color: rgba(0, 0, 0, 0.2);
+.spen-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
-#signatureCanvas {
-  width: 100%;
-  height: 100%;
-  display: block;
-  cursor: crosshair;
+.btn-clear-sig {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--danger-debt);
+  font-weight: 800;
+  cursor: pointer;
 }
 
-.sig-hint {
-  position: absolute;
-  inset: 0;
+.unsigned-checkbox-row {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
   font-size: 13px;
-  color: var(--text-muted);
-  pointer-events: none;
-  transition: opacity 0.2s;
 }
 
-/* Big Submit Action Button */
-.btn-submit-large {
+/* PAYSLIP CANVAS PREVIEW */
+.payslip-canvas-holder {
+  background: #E2E8F0;
+  padding: 10px;
+  border-radius: 12px;
+  text-align: center;
+}
+
+#payslipRenderCanvas {
   width: 100%;
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: #ffffff;
-  border: none;
-  border-radius: var(--radius-lg);
-  padding: 15px 0;
-  font-size: 16px;
-  font-weight: 800;
-  margin-top: 18px;
-  cursor: pointer;
-  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.35);
-  transition: transform 0.15s ease;
+  height: auto;
+  border-radius: 8px;
+  background: #FFFFFF;
 }
 
-.btn-submit-large:active {
-  transform: scale(0.97);
+/* SNACKBAR HOÀN TÁC */
+.snackbar {
+  position: fixed;
+  bottom: 80px;
+  left: 16px;
+  right: 16px;
+  max-width: 448px;
+  margin: 0 auto;
+  background: #0F1715;
+  color: #FFFFFF;
+  padding: 12px 16px;
+  border-radius: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 55;
+  font-weight: 700;
+}
+
+.snackbar-btn {
+  background: var(--amber-warn);
+  color: #FFFFFF;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.notice-banner, .payroll-info-banner {
+  background: var(--amber-soft);
+  border: 1.5px solid var(--amber-warn);
+  color: var(--text-primary);
+  padding: 12px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.project-filter-row {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.filter-chips {
+  display: flex;
+  gap: 8px;
+}
+
+.chip {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.chip.active {
+  background: var(--brand-primary);
+  color: #FFFFFF;
+  border-color: var(--brand-primary);
 }
