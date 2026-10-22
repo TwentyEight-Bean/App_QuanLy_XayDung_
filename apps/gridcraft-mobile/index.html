@@ -3,18 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#0D7A5F" />
+  <meta name="theme-color" content="#117D70" />
   <title>Sổ Công Trình — GridCraft 2.0 (S23 Ultra)</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="app.css" />
-  <!-- Thư viện SheetJS nhẹ để xuất file .xlsx chuẩn nếu chưa nạp WASM -->
+  <!-- Thư viện SheetJS xuất file .xlsx đa sheet chuẩn Excel -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
   <div class="app-shell">
-    <!-- TOP HEADER: HIỂN THỊ CÔNG TRÌNH & KỲ THỜI GIAN -->
+    
+    <!-- ================= TOP APP BAR ================= -->
     <header class="top-bar">
       <div class="top-bar-row">
+        <!-- Project Switcher Pill (Bấm mở sheet chọn công trình) -->
         <button class="project-selector-btn" id="btnOpenProjectSheet" aria-label="Chọn công trình">
           <span class="project-badge-dot" id="headerProjectDot"></span>
           <div class="project-selector-text">
@@ -24,13 +26,19 @@
           <span class="chevron-icon">▼</span>
         </button>
 
+        <!-- Nút tiện ích trên cùng -->
         <div class="top-actions">
-          <button class="icon-btn" id="btnThemeToggle" title="Đổi giao diện Sáng/Tối">☀️</button>
-          <button class="icon-btn" id="btnExportExcel" title="Xuất file Excel (.xlsx)">📊</button>
+          <button class="icon-btn" id="btnThemeToggle" title="Chuyển chế độ Sáng / Tối (AMOLED)" aria-label="Đổi giao diện">
+            <svg id="themeIconSun" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+            <svg id="themeIconMoon" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="display:none;"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          </button>
+          <button class="icon-btn" id="btnExportExcel" title="Xuất file Excel (.xlsx)" aria-label="Xuất file Excel">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="8" y1="13" x2="16" y2="13"></line><line x1="8" y1="17" x2="16" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+          </button>
         </div>
       </div>
 
-      <!-- BỘ LỌC KỲ THỜI GIAN -->
+      <!-- BỘ LỌC KỲ THỜI GIAN CHUẨN ĐẶC TẢ -->
       <div class="period-bar">
         <div class="period-mode-tabs" role="tablist">
           <button class="period-tab" data-mode="week">Tuần</button>
@@ -38,59 +46,64 @@
           <button class="period-tab" data-mode="year">Năm</button>
         </div>
         <div class="period-nav">
-          <button class="period-arrow" id="btnPrevPeriod" aria-label="Kỳ trước">◀</button>
+          <button class="period-arrow" id="btnPrevPeriod" aria-label="Kỳ trước">‹</button>
           <span class="period-label" id="currentPeriodLabel">Tháng 10/2026</span>
-          <button class="period-arrow" id="btnNextPeriod" aria-label="Kỳ sau">▶</button>
+          <button class="period-arrow" id="btnNextPeriod" aria-label="Kỳ sau">›</button>
         </div>
       </div>
     </header>
 
-    <!-- VÙNG NỘI DUNG CHÍNH (CUỘN ĐƯỢC) -->
+    <!-- ================= VÙNG NỘI DUNG CUỘN ================= -->
     <main class="main-content" id="mainViewport">
       
       <!-- ================= TAB 1: TỔNG QUAN ================= -->
       <section class="tab-pane active" id="tab-overview">
-        <!-- Thẻ Hero: Tồn quỹ tiền mặt + Con mắt ẩn tiền -->
+        <!-- 1 Hero Card: Tồn quỹ tiền mặt thực tế -->
         <div class="hero-card">
           <div class="hero-header">
-            <span class="hero-title" id="heroBalanceTitle">TỒN QUỸ TIỀN MẶT (LŨY KẾ)</span>
+            <span class="hero-title" id="heroBalanceTitle">TỒN QUỸ TIỀN MẶT THỰC TẾ</span>
             <button class="privacy-toggle-btn" id="btnTogglePrivacy" aria-label="Ẩn hoặc hiện số tiền">
-              <span id="privacyEyeIcon">👁️ Hiện</span>
+              <span id="privacyEyeIcon">👁️ Ẩn số tiền</span>
             </button>
           </div>
           <div class="hero-amount" id="heroCashBalance">45.200.000 đ</div>
           <div class="hero-sub" id="heroPeriodSummary">
-            Trong kỳ: Thu +80tr • Chi -34,8tr
+            <span class="stat-pill in" id="heroPillIn">Thu +80.000.000 đ</span>
+            <span class="stat-pill out" id="heroPillOut">Chi -34.800.000 đ</span>
           </div>
         </div>
 
         <!-- 2 Thẻ KPI trong kỳ -->
         <div class="kpi-grid">
           <div class="kpi-card">
-            <span class="kpi-label">TỔNG CÔNG TRONG KỲ</span>
+            <span class="kpi-label">TỔNG CÔNG KỲ NÀY</span>
             <strong class="kpi-value" id="kpiTotalAttendance">142,5 công</strong>
-            <span class="kpi-meta" id="kpiWorkerCount">8 thợ hoạt động</span>
+            <span class="kpi-meta" id="kpiWorkerCount">8 thợ đang làm việc</span>
           </div>
-          <div class="kpi-card warn-border">
+          <div class="kpi-card">
             <span class="kpi-label">TIỀN ỨNG & NỢ VẬT TƯ</span>
-            <strong class="kpi-value text-amber" id="kpiAdvancesAndDebt">18.500.000 đ</strong>
+            <strong class="kpi-value amber" id="kpiAdvancesAndDebt">18.500.000 đ</strong>
             <span class="kpi-meta" id="kpiDebtDetail">Ứng: 6,5tr • Nợ VT: 12tr</span>
           </div>
         </div>
 
-        <!-- Khối Hành Động Nhanh (Vừa tầm ngón cái) -->
+        <!-- 1 Khối Hành Động Chính (Primary Action) -->
         <div class="quick-actions-card">
           <h2 class="section-heading">Thao tác nhanh hôm nay</h2>
           <div class="quick-actions-grid">
             <button class="action-big-btn primary" id="btnQuickAttendance">
-              <span class="action-icon">✅</span>
+              <div class="action-icon-circle">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              </div>
               <div class="action-text">
                 <strong>Chấm công ngay</strong>
                 <small id="quickAttStatus">Hôm nay chưa chấm đủ</small>
               </div>
             </button>
-            <button class="action-big-btn amber" id="btnQuickAdvance">
-              <span class="action-icon">✍️</span>
+            <button class="action-big-btn secondary" id="btnQuickAdvance">
+              <div class="action-icon-circle">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>
+              </div>
               <div class="action-text">
                 <strong>Ghi ứng tiền (S-Pen)</strong>
                 <small>Ký nhận tại chỗ</small>
@@ -99,13 +112,13 @@
           </div>
         </div>
 
-        <!-- Nhắc việc / Cảnh báo -->
+        <!-- Nhắc việc thông minh (Chỉ hiện khi có việc cần giải quyết) -->
         <div class="alerts-container" id="overviewAlerts"></div>
 
         <!-- Danh sách tóm tắt công trình -->
         <div class="section-block">
           <div class="section-header-row">
-            <h2 class="section-heading">Tình trạng công trình</h2>
+            <h2 class="section-heading">Tình trạng các công trình</h2>
             <button class="link-btn" id="btnBackupRestore">Sao lưu / Khôi phục</button>
           </div>
           <div class="card-list" id="overviewProjectList"></div>
@@ -116,29 +129,37 @@
       <section class="tab-pane" id="tab-attendance">
         <!-- Cảnh báo nếu đang chọn Tất cả công trình -->
         <div class="notice-banner" id="attendanceAllProjectsBanner" hidden>
-          <p>⚠️ Bạn đang xem <strong>Tất cả công trình</strong>. Hãy chọn 1 công trình cụ thể để chấm công không bị nhầm đội thợ.</p>
-          <button class="btn-solid-sm" id="btnPickProjectForAtt">Chọn công trình ngay</button>
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          <div>
+            Bạn đang chọn <strong>Tất cả công trình</strong>. Vui lòng chọn một công trình cụ thể trước khi điểm danh để tránh nhầm đội thợ.
+            <div style="margin-top:6px;">
+              <button class="link-btn" id="btnPickProjectForAtt" style="text-decoration:underline; font-weight:800;">👉 Bấm vào đây để chọn công trình</button>
+            </div>
+          </div>
         </div>
 
-        <!-- Thanh chọn ngày chấm công -->
+        <!-- Thanh chuyển ngày chấm công -->
         <div class="date-navigator-card">
-          <button class="date-Step-btn" id="btnPrevDay">◀ Hôm trước</button>
+          <button class="date-step-btn" id="btnPrevDay">‹ Hôm trước</button>
           <div class="date-current-box">
             <input type="date" id="attendanceDateInput" class="date-native-picker" />
             <span class="date-human-tag" id="attendanceDateHuman">Hôm nay</span>
           </div>
-          <button class="date-Step-btn" id="btnNextDay">Hôm sau ▶</button>
+          <button class="date-step-btn" id="btnNextDay">Hôm sau ›</button>
         </div>
 
-        <!-- Sticky Summary Bar -->
+        <!-- Dải tóm tắt công trong ngày -->
         <div class="attendance-summary-strip" id="attendanceSummaryStrip">
-          Đi làm: 0 • Nửa công: 0 • Tăng ca: 0 • Nghỉ: 0
+          <span>🟢 Đủ: 0</span>
+          <span>🟡 Nửa: 0</span>
+          <span>🔵 TC: 0</span>
+          <span>🔴 Nghỉ: 0</span>
         </div>
 
         <!-- Danh sách thợ chấm công 1 chạm -->
         <div class="worker-attendance-list" id="attendanceWorkerList"></div>
 
-        <!-- Khối Nút Thần Thánh ở đáy vùng Chấm công -->
+        <!-- Khối nút hành động ở đáy vùng Chấm công -->
         <div class="bottom-sticky-cta" id="attendanceStickyFooter">
           <button class="btn-god-mode" id="btnMarkAllFullDay">
             ⚡ Điểm danh cả đội (1.0 Công)
@@ -151,7 +172,7 @@
 
       <!-- ================= TAB 3: SỔ TIỀN ================= -->
       <section class="tab-pane" id="tab-money">
-        <!-- 4 Phân mục con -->
+        <!-- 4 Phân mục con tinh gọn -->
         <div class="subtab-pills" role="tablist">
           <button class="subtab-pill active" data-subtab="advances">1. Tạm ứng</button>
           <button class="subtab-pill" data-subtab="payroll">2. Bảng lương</button>
@@ -159,35 +180,35 @@
           <button class="subtab-pill" data-subtab="cashflow">4. Thu chi</button>
         </div>
 
-        <!-- SUB-TAB 3.1: TẠM ỨNG & KÝ S-PEN -->
+        <!-- SUBTAB 3.1: TẠM ỨNG -->
         <div class="subtab-content active" id="subtab-advances">
           <div class="subtab-top-action">
             <button class="btn-primary-full" id="btnOpenAdvanceSheet">
-              ✍️ + Tạo phiếu ứng tiền (Ký nhận S-Pen)
+              ✍️ + Tạo Phiếu Ứng Tiền (Ký S-Pen)
             </button>
           </div>
           <div class="card-list" id="advancesHistoryList"></div>
         </div>
 
-        <!-- SUB-TAB 3.2: BẢNG LƯƠNG & GỬI ZALO -->
+        <!-- SUBTAB 3.2: BẢNG LƯƠNG -->
         <div class="subtab-content" id="subtab-payroll">
           <div class="payroll-info-banner">
-            Thực lĩnh = (Tổng công × Đơn giá lúc chấm) − Tổng ứng trong kỳ
+            Thực lĩnh = (Tổng công × Đơn giá lúc chấm) − Tiền đã ứng
           </div>
           <div class="card-list" id="payrollWorkerList"></div>
         </div>
 
-        <!-- SUB-TAB 3.3: VẬT TƯ & CÔNG NỢ ĐẠI LÝ -->
+        <!-- SUBTAB 3.3: VẬT TƯ -->
         <div class="subtab-content" id="subtab-materials">
           <div class="subtab-top-action">
             <button class="btn-primary-full" id="btnOpenMaterialSheet">
-              🧱 + Ghi nhập vật tư / Nợ đại lý
+              🧱 + Ghi Nhập Vật Tư / Nợ Đại Lý
             </button>
           </div>
           <div class="card-list" id="materialsHistoryList"></div>
         </div>
 
-        <!-- SUB-TAB 3.4: SỔ QUỸ THU CHI -->
+        <!-- SUBTAB 3.4: THU CHI TIỀN MẶT -->
         <div class="subtab-content" id="subtab-cashflow">
           <div class="subtab-top-action two-cols">
             <button class="btn-primary-full" id="btnOpenCashInSheet">➕ Chủ nhà ứng tiền</button>
@@ -200,7 +221,7 @@
       <!-- ================= TAB 4: CÔNG TRÌNH ================= -->
       <section class="tab-pane" id="tab-projects">
         <div class="project-filter-row">
-          <input type="search" id="projectSearchInput" class="search-input" placeholder="🔍 Tìm tên công trình, chủ nhà, địa điểm..." />
+          <input type="search" id="projectSearchInput" class="search-input" placeholder="🔍 Tìm tên công trình, chủ nhà, địa chỉ..." />
           <div class="filter-chips">
             <button class="chip active" data-pstatus="all">Tất cả</button>
             <button class="chip" data-pstatus="active">Đang làm</button>
@@ -210,7 +231,7 @@
 
         <div class="subtab-top-action">
           <button class="btn-primary-full" id="btnOpenNewProjectSheet">
-            🏗️ + Tạo công trình mới
+            🏗️ + Tạo Công Trình Mới
           </button>
         </div>
 
@@ -219,40 +240,40 @@
 
     </main>
 
+    <!-- NÚT NỔI ĐỔI NHANH CÔNG TRÌNH (TẦM VỚI NGÓN CÁI) -->
+    <button class="floating-project-pill" id="btnFloatingProject" title="Đổi nhanh công trình">
+      <span>🏗️</span> <span id="floatingProjectShortName">Ninh Kiều</span> ▾
+    </button>
+
     <!-- SNACKBAR HOÀN TÁC (UNDO BAR) -->
     <div class="snackbar" id="undoSnackbar" hidden>
       <span id="undoMessage">Đã điểm danh cả đội</span>
       <button class="snackbar-btn" id="btnUndoAction">HOÀN TÁC</button>
     </div>
 
-    <!-- NÚT NỔI ĐỔI NHANH CÔNG TRÌNH Ở ĐÁY (VỪA NGÓN CÁI S23 ULTRA) -->
-    <button class="floating-project-pill" id="btnFloatingProject" title="Đổi nhanh công trình bằng 1 tay">
-      🏗️ <span id="floatingProjectShortName">Ninh Kiều</span> ▴
-    </button>
-
-    <!-- BOTTOM NAVIGATION (4 MỤC CHUẨN ONE UI) -->
+    <!-- ================= BOTTOM NAVIGATION (4 MỤC CHUẨN) ================= -->
     <nav class="bottom-nav" aria-label="Điều hướng chính">
       <button class="nav-item active" data-tab="tab-overview">
-        <span class="nav-icon">📊</span>
-        <span class="nav-label">Tổng quan</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="9" rx="1.5"></rect><rect x="14" y="3" width="7" height="5" rx="1.5"></rect><rect x="14" y="12" width="7" height="9" rx="1.5"></rect><rect x="3" y="16" width="7" height="5" rx="1.5"></rect></svg>
+        <span>Tổng quan</span>
       </button>
       <button class="nav-item" data-tab="tab-attendance">
-        <span class="nav-icon">📅</span>
-        <span class="nav-label">Chấm công</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line><polyline points="9 16 11 18 15 14"></polyline></svg>
+        <span>Chấm công</span>
       </button>
       <button class="nav-item" data-tab="tab-money">
-        <span class="nav-icon">💰</span>
-        <span class="nav-label">Sổ tiền</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="6" width="20" height="12" rx="2"></rect><circle cx="12" cy="12" r="2.5"></circle><path d="M6 12h.01M18 12h.01"></path></svg>
+        <span>Sổ tiền</span>
       </button>
       <button class="nav-item" data-tab="tab-projects">
-        <span class="nav-icon">🏗️</span>
-        <span class="nav-label">Công trình</span>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 21h18"></path><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"></path><path d="M9 9h1"></path><path d="M9 13h1"></path><path d="M9 17h1"></path><path d="M14 9h1"></path><path d="M14 13h1"></path><path d="M14 17h1"></path></svg>
+        <span>Công trình</span>
       </button>
     </nav>
   </div>
 
   <!-- ================================================================= -->
-  <!-- CÁC BOTTOM SHEET & MODAL (TỐI ƯU 1/2 DƯỚI MÀN HÌNH S23 ULTRA) -->
+  <!-- CÁC BOTTOM SHEETS & MODALS (TỐI ƯU S23 ULTRA + S-PEN) -->
   <!-- ================================================================= -->
 
   <!-- 1. BOTTOM SHEET CHỌN CÔNG TRÌNH -->
@@ -268,15 +289,15 @@
     </div>
   </div>
 
-  <!-- 2. BOTTOM SHEET TẠO PHIẾU TẠM ỨNG + BÀN PHÍM TIỀN + KÝ S-PEN -->
+  <!-- 2. BOTTOM SHEET TẠO PHIẾU TẠM ỨNG + BÀN PHÍM SỐ + KÝ S-PEN -->
   <div class="sheet-backdrop" id="sheetAdvanceForm" hidden>
-    <div class="bottom-sheet sheet-tall">
+    <div class="bottom-sheet">
       <div class="sheet-header">
         <h3>Phiếu Tạm Ứng Tiền Thợ</h3>
         <button class="sheet-close" data-close="sheetAdvanceForm">✕ Hủy</button>
       </div>
       <div class="sheet-body">
-        <label class="field-label">1. Chọn thợ nhận tiền</label>
+        <label class="field-label">1. Thợ nhận tiền</label>
         <select id="advWorkerSelect" class="form-select"></select>
 
         <label class="field-label">2. Số tiền tạm ứng</label>
@@ -285,7 +306,7 @@
           <div class="money-words" id="advAmountWords">Năm trăm nghìn đồng</div>
         </div>
 
-        <!-- Custom Money Pad Công Trường -->
+        <!-- Các nút cộng nhanh tiền -->
         <div class="quick-money-chips">
           <button type="button" class="money-chip" data-add="100000">+100k</button>
           <button type="button" class="money-chip" data-add="200000">+200k</button>
@@ -294,6 +315,7 @@
           <button type="button" class="money-chip" data-add="2000000">+2 Triệu</button>
         </div>
 
+        <!-- Bàn phím số công trường (Numpad) -->
         <div class="custom-numpad">
           <button type="button" data-digit="1">1</button>
           <button type="button" data-digit="2">2</button>
@@ -309,24 +331,24 @@
           <button type="button" data-digit="BS" class="key-warn">⌫ Xóa</button>
         </div>
 
-        <label class="field-label">Ghi chú (Ăn sáng, đổ xăng, gửi về quê...)</label>
-        <input type="text" id="advNoteInput" class="form-input" placeholder="VD: Ứng tiền ăn giữa tuần" />
+        <label class="field-label">Lý do ứng (Đổ xăng, ăn sáng, gửi về quê...)</label>
+        <input type="text" id="advNoteInput" class="form-input" placeholder="VD: Ứng ăn sáng & xăng xe" />
 
-        <!-- KHUNG KÝ NHẬN BẰNG BÚT S-PEN (CHỐNG CHẠM NHẦM VIỀN CONG) -->
+        <!-- KHUNG KÝ NHẬN S-PEN CHỐNG TỲ TAY -->
         <div class="spen-signature-container">
           <div class="spen-receipt-banner" id="spenLiveBanner">
             Đưa máy cho thợ ký xác nhận ứng 500.000 đ
           </div>
           <div class="spen-canvas-wrapper">
-            <canvas id="spenCanvas" width="340" height="170"></canvas>
+            <canvas id="spenCanvas" width="360" height="160"></canvas>
           </div>
           <div class="spen-toolbar">
-            <span class="spen-mode-indicator" id="spenStatusText">🖊️ Sẵn sàng nhận bút S-Pen hoặc ngón tay</span>
+            <span id="spenStatusText">🖊️ Sẵn sàng nhận bút S-Pen hoặc ngón tay</span>
             <button type="button" class="btn-clear-sig" id="btnClearSignature">Xóa ký lại</button>
           </div>
           <label class="unsigned-checkbox-row">
             <input type="checkbox" id="chkAllowUnsigned" />
-            <span>Thợ chưa có mặt — Đánh dấu <strong>"Chưa ký"</strong> (Bổ sung chữ ký sau)</span>
+            <span>Thợ vắng mặt — Đánh dấu <strong>"Chưa ký"</strong> (Ký bổ sung sau)</span>
           </label>
         </div>
 
@@ -337,25 +359,24 @@
     </div>
   </div>
 
-  <!-- 3. MODAL PHIẾU LƯƠNG ẢNH (VISUAL PAYSLIP CARD GỬI ZALO) -->
+  <!-- 3. MODAL PHIẾU LƯƠNG ĐỐI SOÁT (GỬI ZALO) -->
   <div class="sheet-backdrop" id="sheetPayslipPreview" hidden>
-    <div class="bottom-sheet sheet-tall">
+    <div class="bottom-sheet">
       <div class="sheet-header">
-        <h3>Phiếu Lương Đối Soát (Gửi Zalo)</h3>
+        <h3>Phiếu Quyết Toán Lương</h3>
         <button class="sheet-close" data-close="sheetPayslipPreview">✕ Đóng</button>
       </div>
       <div class="sheet-body">
-        <p class="helper-text">Ảnh phiếu lương dưới đây có in kèm chữ ký S-Pen các lần ứng để gửi qua Zalo cho thợ:</p>
         <div class="payslip-canvas-holder">
-          <canvas id="payslipRenderCanvas" width="680" height="820"></canvas>
+          <canvas id="payslipRenderCanvas" width="680" height="840"></canvas>
         </div>
-        <div class="payslip-actions">
+        <div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">
           <button class="btn-submit-primary" id="btnSharePayslipImage">
-            📤 Chia sẻ Ảnh Phiếu Lương (Zalo)
+            📤 Chia Sẻ Ảnh Phiếu Lương (Zalo)
           </button>
-          <div class="two-cols-gap" style="margin-top: 8px;">
+          <div class="two-cols-gap">
             <button class="btn-outline-full" id="btnDownloadPayslipPng">⬇️ Tải ảnh về máy</button>
-            <button class="btn-outline-full" id="btnCopyPayslipText">📋 Copy văn bản</button>
+            <button class="btn-outline-full" id="btnCopyPayslipText">📋 Copy tin nhắn</button>
           </div>
         </div>
       </div>
@@ -370,32 +391,33 @@
         <button class="sheet-close" data-close="sheetMaterialForm">✕ Hủy</button>
       </div>
       <div class="sheet-body">
-        <label class="field-label">Tên vật tư (Xi măng, cát, đá, gạch, sắt...)</label>
+        <label class="field-label">Tên loại vật tư</label>
         <input type="text" id="matNameInput" class="form-input" placeholder="VD: Xi măng Hà Tiên" />
 
         <div class="two-cols-gap">
           <div>
             <label class="field-label">Số lượng</label>
-            <input type="number" id="matQtyInput" class="form-input" value="50" min="1" step="0.5" />
+            <input type="number" id="matQtyInput" class="form-input" value="50" min="0.5" step="0.5" />
           </div>
           <div>
-            <label class="field-label">Đơn vị</label>
+            <label class="field-label">Đơn vị tính</label>
             <select id="matUnitSelect" class="form-select">
               <option value="Bao">Bao</option>
               <option value="Khối (m³)">Khối (m³)</option>
               <option value="Viên">Viên</option>
               <option value="Cây">Cây</option>
               <option value="Kg">Kg</option>
+              <option value="Tấn">Tấn</option>
               <option value="Chuyến">Chuyến</option>
             </select>
           </div>
         </div>
 
         <label class="field-label">Đơn giá (VND)</label>
-        <input type="number" id="matPriceInput" class="form-input" value="90000" step="1000" />
+        <input type="number" id="matPriceInput" class="form-input" value="92000" step="1000" />
 
-        <label class="field-label">Đại lý cung cấp</label>
-        <input type="text" id="matVendorInput" class="form-input" placeholder="VD: Đại lý VLXD Tư Thành" />
+        <label class="field-label">Đại lý / Cửa hàng cung cấp</label>
+        <input type="text" id="matVendorInput" class="form-input" placeholder="VD: VLXD Tư Thành" />
 
         <label class="field-label">Trạng thái thanh toán</label>
         <select id="matPaidStatus" class="form-select">
@@ -410,14 +432,120 @@
     </div>
   </div>
 
-  <!-- 5. BOTTOM SHEET THÊM THỢ / TẠO CÔNG TRÌNH / THU CHI NHANH -->
-  <div class="sheet-backdrop" id="sheetQuickDialog" hidden>
+  <!-- 5. BOTTOM SHEET TẠO CÔNG TRÌNH MỚI (KHÔNG DÙNG PROMPT THÔ) -->
+  <div class="sheet-backdrop" id="sheetNewProjectForm" hidden>
     <div class="bottom-sheet">
       <div class="sheet-header">
-        <h3 id="quickDialogTitle">Thêm mới</h3>
-        <button class="sheet-close" data-close="sheetQuickDialog">✕ Đóng</button>
+        <h3>Tạo Công Trình Mới</h3>
+        <button class="sheet-close" data-close="sheetNewProjectForm">✕ Hủy</button>
       </div>
-      <div class="sheet-body" id="quickDialogBody"></div>
+      <div class="sheet-body">
+        <label class="field-label">Tên công trình</label>
+        <input type="text" id="newPrjName" class="form-input" placeholder="VD: Biệt thự vườn Cần Thơ" />
+
+        <label class="field-label">Tên chủ nhà</label>
+        <input type="text" id="newPrjOwner" class="form-input" placeholder="VD: Chú Bảy" />
+
+        <label class="field-label">Địa điểm thi công</label>
+        <input type="text" id="newPrjLocation" class="form-input" placeholder="VD: Phường An Khánh, Ninh Kiều" />
+
+        <label class="field-label">Ngày khởi công</label>
+        <input type="date" id="newPrjStartDate" class="form-input" />
+
+        <button type="button" class="btn-submit-primary" id="btnSubmitNewProject">
+          🏗️ Tạo Công Trình
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6. BOTTOM SHEET THÊM THỢ MỚI (KHÔNG DÙNG PROMPT THÔ) -->
+  <div class="sheet-backdrop" id="sheetNewWorkerForm" hidden>
+    <div class="bottom-sheet">
+      <div class="sheet-header">
+        <h3>Thêm Thợ Vào Công Trình</h3>
+        <button class="sheet-close" data-close="sheetNewWorkerForm">✕ Hủy</button>
+      </div>
+      <div class="sheet-body">
+        <label class="field-label">Họ và tên thợ</label>
+        <input type="text" id="newWorkerName" class="form-input" placeholder="VD: Nguyễn Văn Năm" />
+
+        <label class="field-label">Vai trò chuyên môn</label>
+        <select id="newWorkerRole" class="form-select">
+          <option value="Thợ cả (Thợ chính)">Thợ cả (Thợ chính)</option>
+          <option value="Thợ xây chính" selected>Thợ xây chính</option>
+          <option value="Thợ hồ phụ">Thợ hồ phụ</option>
+          <option value="Thợ sắt / Cốt pha">Thợ sắt / Cốt pha</option>
+          <option value="Thợ điện nước">Thợ điện nước</option>
+          <option value="Thợ sơn nước">Thợ sơn nước</option>
+        </select>
+
+        <label class="field-label">Mức lương 1 ngày công (VND)</label>
+        <input type="number" id="newWorkerRate" class="form-input" value="450000" step="10000" />
+
+        <button type="button" class="btn-submit-primary" id="btnSubmitNewWorker">
+          👷 Lưu Thông Tin Thợ
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 7. BOTTOM SHEET THU TIỀN CHỦ NHÀ -->
+  <div class="sheet-backdrop" id="sheetCashInForm" hidden>
+    <div class="bottom-sheet">
+      <div class="sheet-header">
+        <h3>Chủ Nhà Tạm Ứng Tiền</h3>
+        <button class="sheet-close" data-close="sheetCashInForm">✕ Hủy</button>
+      </div>
+      <div class="sheet-body">
+        <label class="field-label">Số tiền chủ nhà ứng (VND)</label>
+        <input type="number" id="cashInAmount" class="form-input" value="20000000" step="500000" />
+
+        <label class="field-label">Nội dung đợt ứng</label>
+        <input type="text" id="cashInNote" class="form-input" value="Chủ nhà tạm ứng đợt mới" />
+
+        <button type="button" class="btn-submit-primary" id="btnSubmitCashIn">
+          ➕ Lưu Khoản Thu
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 8. BOTTOM SHEET CHI PHÍ LẶT VẶT -->
+  <div class="sheet-backdrop" id="sheetCashOutForm" hidden>
+    <div class="bottom-sheet">
+      <div class="sheet-header">
+        <h3>Ghi Chi Phí Lặt Vặt</h3>
+        <button class="sheet-close" data-close="sheetCashOutForm">✕ Hủy</button>
+      </div>
+      <div class="sheet-body">
+        <label class="field-label">Số tiền chi (VND)</label>
+        <input type="number" id="cashOutAmount" class="form-input" value="500000" step="50000" />
+
+        <label class="field-label">Lý do chi (Ăn uống, xăng xe, ốc vít, đồ điện...)</label>
+        <input type="text" id="cashOutNote" class="form-input" placeholder="VD: Mua ốc vít và dây kẽm" />
+
+        <button type="button" class="btn-submit-primary" id="btnSubmitCashOut">
+          ➖ Lưu Khoản Chi
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 9. CUSTOM CONFIRMATION SHEET (THAY THẾ CONFIRM MẶC ĐỊNH CỦA TRÌNH DUYỆT) -->
+  <div class="sheet-backdrop" id="sheetConfirmDialog" hidden>
+    <div class="bottom-sheet">
+      <div class="sheet-header">
+        <h3 id="confirmDialogTitle">Xác nhận</h3>
+        <button class="sheet-close" id="btnConfirmCancel">✕ Đóng</button>
+      </div>
+      <div class="sheet-body">
+        <p class="dialog-msg" id="confirmDialogMsg">Bạn có chắc chắn muốn thực hiện thao tác này?</p>
+        <div class="dialog-actions">
+          <button class="btn-outline-full" id="btnConfirmReject">Hủy bỏ</button>
+          <button class="btn-submit-primary" id="btnConfirmAccept">Xác nhận</button>
+        </div>
+      </div>
     </div>
   </div>
 
