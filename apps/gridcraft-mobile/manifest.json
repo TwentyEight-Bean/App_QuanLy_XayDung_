@@ -1,0 +1,17 @@
+{
+  "name": "GridCraft Cai Thầu — S23 Ultra",
+  "short_name": "Cai Thầu Pro",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0a0f18",
+  "theme_color": "#0a0f18",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "./icon.jpg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
+}
