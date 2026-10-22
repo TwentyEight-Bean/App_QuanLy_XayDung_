@@ -205,8 +205,14 @@
 
         <!-- SUBTAB 3.2: BẢNG LƯƠNG -->
         <div class="subtab-content" id="subtab-payroll">
-          <div class="payroll-info-banner">
-            Thực lĩnh = (Tổng công × Đơn giá lúc chấm) − Tiền đã ứng
+          <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-card); padding:10px 14px; border-radius:12px; margin-bottom:12px; border:1px solid var(--border-subtle);">
+            <div style="font-size:13.5px; font-weight:700; color:var(--text-secondary);">
+              🗓️ Kỳ quyết toán lương:
+            </div>
+            <input type="month" id="payrollSettlementMonth" class="date-native-picker" style="font-weight:700; color:var(--brand-primary); font-size:14px; padding:6px 12px; border-radius:8px; border:1px solid var(--border-input); background:var(--bg-surface);" />
+          </div>
+          <div class="payroll-info-banner" id="payrollInfoBanner">
+            Thực lĩnh = Lương gộp − Tiền ứng trong kỳ − Tiền ứng dư kỳ trước (nếu có)
           </div>
           <div class="card-list" id="payrollWorkerList"></div>
         </div>

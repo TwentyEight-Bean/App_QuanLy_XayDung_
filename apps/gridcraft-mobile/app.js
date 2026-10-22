@@ -43,39 +43,50 @@ function readMoneyVietnamese(amount) {
 }
 
 // ================= MÚI GIỜ ASIA/HO_CHI_MINH (UTC+7) & XỬ LÝ KỲ =================
-function getTodayVN() {
-  const now = new Date();
-  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
-  const vnDate = new Date(utc + (7 * 3600000));
-  return vnDate.toISOString().slice(0, 10);
+function getLocalDateVN(dateInput) {
+  const date = dateInput ? (dateInput instanceof Date ? dateInput : new Date(dateInput)) : new Date();
+  if (isNaN(date.getTime())) return "";
+  // en-CA format chuẩn hóa chính xác ra YYYY-MM-DD theo đúng múi giờ Asia/Ho_Chi_Minh
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+  return formatter.format(date);
 }
 
-// Tính toán tuần ISO (Thứ 2 đến Chủ nhật)
+function getTodayVN() {
+  return getLocalDateVN(new Date());
+}
+
+// Tính toán tuần ISO (Thứ 2 đến Chủ nhật) dựa trên ngày địa phương VN
 function getWeekRange(dateStr) {
   if (!dateStr) dateStr = getTodayVN();
   const [y, m, d] = dateStr.split("-").map(Number);
-  const date = new Date(y, m - 1, d);
-  const day = date.getDay(); // 0: CN, 1: T2, ..., 6: T7
+  // Dùng UTC date để tránh cộng trừ lệch giờ DST/OS
+  const date = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  const day = date.getUTCDay(); // 0: CN, 1: T2, ..., 6: T7
   const diffToMonday = day === 0 ? -6 : 1 - day;
 
   const monday = new Date(date);
-  monday.setDate(date.getDate() + diffToMonday);
+  monday.setUTCDate(date.getUTCDate() + diffToMonday);
 
   const sunday = new Date(monday);
-  sunday.setDate(monday.getDate() + 6);
+  sunday.setUTCDate(monday.getUTCDate() + 6);
 
   const fmt = dt => {
-    const yr = dt.getFullYear();
-    const mo = String(dt.getMonth() + 1).padStart(2, "0");
-    const da = String(dt.getDate()).padStart(2, "0");
+    const yr = dt.getUTCFullYear();
+    const mo = String(dt.getUTCMonth() + 1).padStart(2, "0");
+    const da = String(dt.getUTCDate()).padStart(2, "0");
     return `${yr}-${mo}-${da}`;
   };
 
   return {
     start: fmt(monday),
     end: fmt(sunday),
-    displayStart: `${String(monday.getDate()).padStart(2, "0")}/${String(monday.getMonth() + 1).padStart(2, "0")}`,
-    displayEnd: `${String(sunday.getDate()).padStart(2, "0")}/${String(sunday.getMonth() + 1).padStart(2, "0")}/${sunday.getFullYear()}`
+    displayStart: `${String(monday.getUTCDate()).padStart(2, "0")}/${String(monday.getUTCMonth() + 1).padStart(2, "0")}`,
+    displayEnd: `${String(sunday.getUTCDate()).padStart(2, "0")}/${String(sunday.getUTCMonth() + 1).padStart(2, "0")}/${sunday.getUTCFullYear()}`
   };
 }
 
@@ -102,11 +113,14 @@ function createDefaultStore() {
   const currentMonth = today.slice(0, 7);
   return {
     version: 2,
+    revision: 1,
+    updatedAt: new Date().toISOString(),
     settings: {
       selectedProjectId: "PRJ_NINH_KIEU", // "ALL" hoặc ID công trình
-      periodMode: "month",                // "week" | "month" | "year"
+      periodMode: "month",                // "week" | "month" | "year" (bộ lọc báo cáo)
       selectedMonth: currentMonth,        // YYYY-MM
       selectedDate: today,
+      payrollPeriod: currentMonth,        // YYYY-MM (định danh kỳ quyết toán lương ổn định)
       hideBalance: false,
       theme: "light"
     },
@@ -159,9 +173,13 @@ function createDefaultStore() {
         date: today,
         note: "Ứng ăn sáng & xăng xe",
         signedStatus: "signed",
+        signatureType: "digital_ink", // Chữ ký viết tay số hóa qua S-Pen (digital ink), không phải chữ ký số PKI
         signatureDataUrl: null,
         signedAt: today,
-        signatureHash: "PRJ_NINH_KIEU|W01|500000|" + today
+        docVersion: 1,
+        docRef: "REF_ADV_PRJ_NINH_KIEU_W01_" + today,
+        signatureHash: "REF_ADV_PRJ_NINH_KIEU_W01_" + today,
+        adjustments: []
       },
       {
         id: "ADV_2",
@@ -171,9 +189,13 @@ function createDefaultStore() {
         date: today,
         note: "Gửi tiền về quê (Chưa ký)",
         signedStatus: "unsigned",
+        signatureType: null,
         signatureDataUrl: null,
         signedAt: null,
-        signatureHash: null
+        docVersion: 1,
+        docRef: "REF_ADV_PRJ_NINH_KIEU_W04_" + today,
+        signatureHash: null,
+        adjustments: []
       }
     ],
     materials: [
@@ -246,6 +268,12 @@ function migrateStore(rawStore) {
   if (!Array.isArray(d.wagePayments)) d.wagePayments = [];
   if (!Array.isArray(d.auditLogs)) d.auditLogs = [];
 
+  // Metadata phiên bản & timestamp
+  d.revision = Number(d.revision) || 1;
+  d.updatedAt = d.updatedAt || new Date().toISOString();
+  if (!d.settings) d.settings = {};
+  d.settings.payrollPeriod = d.settings.payrollPeriod || d.settings.selectedMonth || getTodayVN().slice(0, 7);
+
   // 2. Migration vật tư: chuyển đổi cấu trúc cũ sang có payments
   d.materials = d.materials.map(m => {
     const qty = Number(m.qty) || 1;
@@ -287,6 +315,68 @@ function migrateStore(rawStore) {
     return a;
   });
 
+  // 4. Migration tạm ứng: bảo toàn chứng từ S-Pen & đối soát
+  d.advances = d.advances.map(a => {
+    const isSigned = a.signedStatus === "signed";
+    return {
+      ...a,
+      signatureType: a.signatureType || (isSigned ? "digital_ink" : null),
+      docVersion: Number(a.docVersion) || 1,
+      docRef: a.docRef || a.signatureHash || ("REF_ADV_" + a.projectId + "_" + a.workerId + "_" + a.date),
+      signatureHash: a.docRef || a.signatureHash || ("REF_ADV_" + a.projectId + "_" + a.workerId + "_" + a.date),
+      adjustments: Array.isArray(a.adjustments) ? a.adjustments : []
+    };
+  });
+
+  // 5. Migration dữ liệu lương cũ: payrollStatus sang wagePayments (tuyệt đối không để phiếu đã trả thành chưa trả)
+  if (rawStore && rawStore.payrollStatus && typeof rawStore.payrollStatus === "object") {
+    Object.entries(rawStore.payrollStatus).forEach(([key, status]) => {
+      if (status === "paid") {
+        // Tách workerId và periodId (ví dụ: "W_LEG_2_2026-09" -> workerId="W_LEG_2", periodId="2026-09")
+        const match = key.match(/^(.*)_(\d{4}-\d{2})$/);
+        const wId = match ? match[1] : key;
+        const pId = match ? match[2] : (d.settings.payrollPeriod || "2026-10");
+        const w = d.workers.find(x => x.id === wId);
+        const prjId = w ? w.projectId : (d.projects[0]?.id || "PRJ_NINH_KIEU");
+        const exists = d.wagePayments.some(wp => wp.workerId === wId && wp.periodId === pId);
+        if (!exists) {
+          d.wagePayments.push({
+            id: "WPAY_MIG_" + key,
+            projectId: prjId,
+            workerId: wId,
+            periodId: pId,
+            grossWage: 0,
+            advanceDeducted: 0,
+            netPaid: 0,
+            paidDate: d.settings.selectedDate || getTodayVN(),
+            note: "Đã chi trả (Di chuyển từ payrollStatus phiên bản cũ)"
+          });
+        }
+      }
+    });
+  }
+
+  // Quét cả worker có thuộc tính payrollStatus hoặc paidStatus
+  d.workers.forEach(w => {
+    if (w.payrollStatus === "paid" || w.paidStatus === "paid") {
+      const pId = d.settings.payrollPeriod || "2026-10";
+      const exists = d.wagePayments.some(wp => wp.workerId === w.id && wp.periodId === pId);
+      if (!exists) {
+        d.wagePayments.push({
+          id: "WPAY_MIG_W_" + w.id + "_" + pId,
+          projectId: w.projectId,
+          workerId: w.id,
+          periodId: pId,
+          grossWage: 0,
+          advanceDeducted: 0,
+          netPaid: 0,
+          paidDate: d.settings.selectedDate || getTodayVN(),
+          note: "Đã chi trả (Di chuyển từ trạng thái thợ cũ)"
+        });
+      }
+    }
+  });
+
   d.version = 2;
   return d;
 }
@@ -323,15 +413,21 @@ class AppStorage {
       if (!raw) return createDefaultStore();
       return migrateStore(JSON.parse(raw));
     } catch (e) {
+      console.warn("LocalStorage read error, fallback to default store:", e);
       return createDefaultStore();
     }
   }
 
   static async save(data) {
+    if (!data) return;
+    // Tăng số hiệu revision và cập nhật timestamp
+    data.revision = (Number(data.revision) || 0) + 1;
+    data.updatedAt = new Date().toISOString();
+
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
     } catch (e) {
-      console.warn("LocalStorage save warning (có thể do dung lượng ảnh ký):", e);
+      console.warn("LocalStorage save warning (có thể do dung lượng ảnh chữ ký):", e);
     }
 
     if (AppStorage.db) {
@@ -361,6 +457,44 @@ class AppStorage {
       }
     });
   }
+
+  static async syncWithIndexedDB() {
+    try {
+      const idbData = await AppStorage.loadFromIndexedDB();
+      if (!idbData) {
+        // IDB rỗng -> Lưu dữ liệu LocalStorage hiện tại sang IDB
+        if (AppStorage.db && store) {
+          const tx = AppStorage.db.transaction(STORE_NAME, "readwrite");
+          tx.objectStore(STORE_NAME).put(store, "current_state");
+        }
+        return;
+      }
+
+      const idbTime = new Date(idbData.updatedAt || 0).getTime();
+      const localTime = new Date(store.updatedAt || 0).getTime();
+      const idbRev = Number(idbData.revision) || 0;
+      const localRev = Number(store.revision) || 0;
+
+      // Single source of truth: Chỉ lấy IDB nếu IDB STRICTLY MỚI HƠN LocalStorage
+      if ((idbRev > localRev && idbTime > localTime) || (localRev === 0 && idbRev > 0)) {
+        console.log("IndexedDB contains newer data. Upgrading store from IDB.");
+        store = idbData;
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
+        } catch (e) {}
+        renderAll();
+      } else {
+        // LocalStorage mới hơn hoặc bằng -> Không cho IDB cũ ghi đè!
+        // Đồng bộ ngược từ LocalStorage sang IDB
+        if (AppStorage.db && store) {
+          const tx = AppStorage.db.transaction(STORE_NAME, "readwrite");
+          tx.objectStore(STORE_NAME).put(store, "current_state");
+        }
+      }
+    } catch (e) {
+      console.warn("Storage sync warning:", e);
+    }
+  }
 }
 
 let store = AppStorage.loadSync();
@@ -379,6 +513,217 @@ function saveStore() {
 function matchesProject(itemProjectId) {
   const sel = store.settings.selectedProjectId;
   return sel === "ALL" || itemProjectId === sel;
+}
+
+// ================= SỔ QUỸ TIỀN MẶT THỐNG NHẤT (UNIFIED CASH LEDGER) =================
+// Nguồn đơn nhất (Single Source of Truth) kết hợp: Sổ thu chi + Tạm ứng + Lương thợ + Vật tư
+function getUnifiedCashLedger(projectId = "ALL") {
+  const ledger = [];
+
+  // 1. Thu chi tiền mặt từ sổ thu chi
+  store.cashTransactions.forEach(t => {
+    if (projectId !== "ALL" && t.projectId !== projectId) return;
+    const prj = store.projects.find(p => p.id === t.projectId);
+    ledger.push({
+      id: t.id,
+      date: t.date,
+      projectId: t.projectId,
+      projectName: prj ? prj.name : t.projectId,
+      category: t.type === "in" ? "Thu tiền mặt" : "Chi tiền mặt",
+      partner: t.category || "Giao dịch quỹ",
+      source: "Sổ thu chi",
+      type: t.type,
+      amountIn: t.type === "in" ? Number(t.amountVnd || 0) : 0,
+      amountOut: t.type === "out" ? Number(t.amountVnd || 0) : 0,
+      note: t.category || ""
+    });
+  });
+
+  // 2. Tiền tạm ứng thợ (Chi tiền mặt từ quỹ)
+  store.advances.forEach(a => {
+    if (projectId !== "ALL" && a.projectId !== projectId) return;
+    const w = store.workers.find(x => x.id === a.workerId);
+    const prj = store.projects.find(p => p.id === a.projectId);
+    ledger.push({
+      id: a.id,
+      date: a.date,
+      projectId: a.projectId,
+      projectName: prj ? prj.name : a.projectId,
+      category: "Chi tạm ứng thợ",
+      partner: w ? w.name : a.workerId,
+      source: "Tạm ứng thợ",
+      type: "out",
+      amountIn: 0,
+      amountOut: Number(a.amountVnd || 0),
+      note: a.note || "Tạm ứng tiền mặt"
+    });
+  });
+
+  // 3. Chi trả lương thực tế (quyết toán tiền mặt)
+  store.wagePayments.forEach(wp => {
+    if (projectId !== "ALL" && wp.projectId !== projectId) return;
+    const w = store.workers.find(x => x.id === wp.workerId);
+    const prj = store.projects.find(p => p.id === wp.projectId);
+    ledger.push({
+      id: wp.id,
+      date: wp.paidDate,
+      projectId: wp.projectId,
+      projectName: prj ? prj.name : wp.projectId,
+      category: `Quyết toán lương (Kỳ ${wp.periodId})`,
+      partner: w ? w.name : wp.workerId,
+      source: "Lương thợ",
+      type: "out",
+      amountIn: 0,
+      amountOut: Number(wp.netPaid || 0),
+      note: wp.note || `Quyết toán lương kỳ ${wp.periodId}`
+    });
+  });
+
+  // 4. Thanh toán tiền mặt cho vật tư (theo ngày thanh toán thực tế paidDate)
+  store.materials.forEach(m => {
+    if (projectId !== "ALL" && m.projectId !== projectId) return;
+    const prj = store.projects.find(p => p.id === m.projectId);
+    (m.payments || []).forEach(p => {
+      ledger.push({
+        id: p.paymentId || ("MPAY_" + m.id),
+        date: p.paidDate,
+        projectId: m.projectId,
+        projectName: prj ? prj.name : m.projectId,
+        category: `Thanh toán vật tư (${m.name})`,
+        partner: m.vendor || "Đại lý VLXD",
+        source: "Trả nợ vật tư",
+        type: "out",
+        amountIn: 0,
+        amountOut: Number(p.amount || 0),
+        note: p.note || `Thanh toán vật tư ${m.name}`
+      });
+    });
+  });
+
+  // Sắp xếp ngày tăng dần (chronological) để tính số dư lũy kế
+  ledger.sort((a, b) => (a.date > b.date ? 1 : (a.date < b.date ? -1 : 0)));
+
+  let running = 0;
+  ledger.forEach(item => {
+    running += (item.amountIn - item.amountOut);
+    item.runningBalance = running;
+  });
+
+  return ledger;
+}
+
+// ================= TÍNH TOÁN LƯƠNG & DƯ ỨNG CHUYỂN KỲ CÓ ĐỐI SOÁT =================
+// Cơ chế Carry-forward: Dư ứng kỳ trước chuyển sang khấu trừ kỳ sau, chống khấu trừ 2 lần
+function calculateWorkerPayrollForPeriod(workerId, projectId = null, targetPeriod = null) {
+  const w = store.workers.find(x => x.id === workerId);
+  if (!w) return null;
+
+  const targetProj = projectId || w.projectId;
+  const targetMo = targetPeriod || store.settings.payrollPeriod || store.settings.selectedMonth || getTodayVN().slice(0, 7);
+
+  // Thu thập tất cả các tháng phát sinh dữ liệu của thợ tại công trình này
+  const monthsSet = new Set();
+  monthsSet.add(targetMo);
+
+  store.attendance.forEach(a => {
+    if (a.workerId === workerId && a.projectId === targetProj && a.date) {
+      const ym = a.date.slice(0, 7);
+      if (ym <= targetMo) monthsSet.add(ym);
+    }
+  });
+
+  store.advances.forEach(adv => {
+    if (adv.workerId === workerId && adv.projectId === targetProj && adv.date) {
+      const ym = adv.date.slice(0, 7);
+      if (ym <= targetMo) monthsSet.add(ym);
+    }
+  });
+
+  store.wagePayments.forEach(wp => {
+    if (wp.workerId === workerId && wp.projectId === targetProj && wp.periodId) {
+      if (wp.periodId <= targetMo) monthsSet.add(wp.periodId);
+    }
+  });
+
+  const sortedMonths = Array.from(monthsSet).sort();
+
+  let openingSurplus = 0;
+  let result = null;
+
+  for (const m of sortedMonths) {
+    // 1. Chấm công trong tháng m
+    const attList = store.attendance.filter(
+      a => a.workerId === workerId && a.projectId === targetProj && a.date && a.date.startsWith(m)
+    );
+    const totalUnits = attList.reduce((s, r) => s + Number(r.units || 0), 0);
+    const grossWage = attList.reduce(
+      (s, r) => s + Number(r.units || 0) * Number(r.rateSnapshot != null ? r.rateSnapshot : w.dailyRate),
+      0
+    );
+
+    // 2. Tạm ứng trong tháng m
+    const advList = store.advances.filter(
+      a => a.workerId === workerId && a.projectId === targetProj && a.date && a.date.startsWith(m)
+    );
+    const periodAdvance = advList.reduce((s, r) => s + Number(r.amountVnd || 0), 0);
+
+    // 3. Khấu trừ khả dụng = Dư ứng chuyển sang từ tháng trước + Ứng trong tháng
+    const carryForwardIn = openingSurplus;
+    const totalDeductible = carryForwardIn + periodAdvance;
+
+    // 4. Kiểm tra xem tháng m đã được quyết toán chi tiền chưa
+    const existingPayment = store.wagePayments.find(
+      wp => wp.workerId === workerId && wp.projectId === targetProj && wp.periodId === m
+    );
+
+    let advanceDeducted = 0;
+    let netPayable = 0;
+    let closingSurplus = 0;
+
+    if (existingPayment) {
+      // Đã quyết toán: lấy theo chứng từ thanh toán đã lưu
+      advanceDeducted = existingPayment.advanceDeducted != null ? existingPayment.advanceDeducted : Math.min(grossWage, totalDeductible);
+      netPayable = existingPayment.netPaid;
+      closingSurplus = Math.max(0, totalDeductible - grossWage);
+    } else {
+      // Chưa quyết toán
+      if (grossWage >= totalDeductible) {
+        advanceDeducted = totalDeductible;
+        netPayable = grossWage - totalDeductible;
+        closingSurplus = 0;
+      } else {
+        advanceDeducted = grossWage;
+        netPayable = 0;
+        closingSurplus = totalDeductible - grossWage;
+      }
+    }
+
+    if (m === targetMo) {
+      result = {
+        worker: w,
+        projectId: targetProj,
+        periodId: targetMo,
+        totalUnits,
+        grossWage,
+        periodAdvance,
+        carryForwardIn,
+        totalDeductible,
+        advanceDeducted,
+        netPayable,
+        closingSurplus,
+        isPaid: !!existingPayment,
+        wagePayment: existingPayment || null,
+        attRecords: attList,
+        advRecords: advList
+      };
+      break;
+    }
+
+    // Chuyển số dư ứng còn lại sang tháng kế tiếp
+    openingSurplus = closingSurplus;
+  }
+
+  return result;
 }
 
 // ================= TÍNH TOÁN TÀI CHÍNH CHUẨN XÁC =================
@@ -814,27 +1159,25 @@ function renderMoneyTab() {
     `;
   }).join("") || `<div class="item-card" style="text-align:center; padding:20px; color:var(--text-muted);">Chưa có phiếu tạm ứng nào trong kỳ này.</div>`;
 
-  // 2. Bảng lương tự động
+  // 2. Bảng lương tự động theo kỳ quyết toán ổn định (tách khỏi bộ lọc xem báo cáo)
+  const settlementMonthInput = document.getElementById("payrollSettlementMonth");
+  const targetPeriod = store.settings.payrollPeriod || store.settings.selectedMonth || getTodayVN().slice(0, 7);
+  if (settlementMonthInput) {
+    settlementMonthInput.value = targetPeriod;
+    settlementMonthInput.onchange = e => {
+      store.settings.payrollPeriod = e.target.value || targetPeriod;
+      saveStore();
+      renderMoneyTab();
+    };
+  }
+
   const workers = store.workers.filter(w => matchesProject(w.projectId));
   document.getElementById("payrollWorkerList").innerHTML = workers.map(w => {
     const prj = store.projects.find(p => p.id === w.projectId);
-    const attRecords = store.attendance.filter(
-      a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
-    );
-    const totalUnits = attRecords.reduce((s, r) => s + Number(r.units || 0), 0);
-    const grossWage = attRecords.reduce((s, r) => s + Number(r.units || 0) * Number(r.rateSnapshot || w.dailyRate), 0);
+    const payroll = calculateWorkerPayrollForPeriod(w.id, w.projectId, targetPeriod);
+    if (!payroll) return "";
 
-    const advRecords = store.advances.filter(
-      a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
-    );
-    const totalAdv = advRecords.reduce((s, r) => s + Number(r.amountVnd || 0), 0);
-    const netPay = grossWage - totalAdv;
-
-    // Kiểm tra đã thanh toán lương thực tế chưa
-    const periodId = store.settings.selectedMonth;
-    const paidRec = store.wagePayments.find(
-      wp => wp.projectId === w.projectId && wp.workerId === w.id && wp.periodId === periodId
-    );
+    const { totalUnits, grossWage, periodAdvance, carryForwardIn, advanceDeducted, netPayable, closingSurplus, isPaid, wagePayment } = payroll;
 
     return `
       <div class="item-card">
@@ -843,27 +1186,35 @@ function renderMoneyTab() {
             <div class="item-title">${escapeHTML(w.name)}</div>
             <div class="item-sub">🏗️ ${escapeHTML(prj ? prj.name : '')} • ${escapeHTML(w.role)} • <strong>${totalUnits} công</strong> (${formatVND(w.dailyRate)}/công)</div>
           </div>
-          <span class="badge ${paidRec ? 'badge-green' : (netPay < 0 ? 'badge-red' : 'badge-blue')}">
-            ${paidRec ? '✅ Đã chi trả' : (netPay < 0 ? 'Dư ứng sang kỳ sau' : 'Chờ tất toán')}
+          <span class="badge ${isPaid ? 'badge-green' : (closingSurplus > 0 && netPayable === 0 ? 'badge-red' : 'badge-blue')}">
+            ${isPaid ? '✅ Đã chi trả' : (closingSurplus > 0 && netPayable === 0 ? 'Dư ứng sang kỳ sau' : 'Chờ tất toán')}
           </span>
         </div>
-        <div style="margin: 10px 0; font-size:13.5px; display:flex; justify-content:space-between; color:var(--text-secondary);">
-          <span>Lương gộp: <strong>${formatVND(grossWage)}</strong></span>
-          <span>Đã ứng: <strong style="color:var(--amber-warn);">-${formatVND(totalAdv)}</strong></span>
+        <div style="margin: 10px 0; font-size:13.5px; display:flex; flex-direction:column; gap:4px; color:var(--text-secondary);">
+          <div style="display:flex; justify-content:space-between;">
+            <span>Lương gộp: <strong>${formatVND(grossWage)}</strong></span>
+            <span>Ứng trong kỳ: <strong style="color:var(--amber-warn);">-${formatVND(periodAdvance)}</strong></span>
+          </div>
+          ${carryForwardIn > 0 ? `
+            <div style="display:flex; justify-content:space-between; font-size:12.5px; color:var(--danger-debt); background:var(--amber-soft); padding:3px 8px; border-radius:6px;">
+              <span>Số dư ứng kỳ trước chuyển sang:</span>
+              <strong>-${formatVND(carryForwardIn)}</strong>
+            </div>
+          ` : ''}
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px dashed var(--border-subtle);">
           <div>
             <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">
-              ${netPay >= 0 ? 'Thực lĩnh còn nhận' : 'Dư ứng khấu trừ sau'}
+              ${netPayable > 0 || isPaid ? 'Thực lĩnh' : 'Dư ứng khấu trừ kỳ sau'}
             </div>
-            <div style="font-size:20px; font-weight:800; color:${netPay >= 0 ? 'var(--brand-primary)' : 'var(--danger-debt)'}; font-variant-numeric:tabular-nums;">
-              ${netPay >= 0 ? formatVND(netPay) : 'Âm ' + formatVND(Math.abs(netPay))}
+            <div style="font-size:20px; font-weight:800; color:${netPayable > 0 || isPaid ? 'var(--brand-primary)' : 'var(--danger-debt)'}; font-variant-numeric:tabular-nums;">
+              ${isPaid ? formatVND(wagePayment.netPaid) : (netPayable > 0 ? formatVND(netPayable) : 'Âm ' + formatVND(closingSurplus))}
             </div>
-            ${paidRec ? `<small style="color:var(--brand-primary); font-size:11.5px; font-weight:600;">(Đã chi ngày ${paidRec.paidDate})</small>` : ''}
+            ${isPaid ? `<small style="color:var(--brand-primary); font-size:11.5px; font-weight:600;">(Đã chi ngày ${wagePayment.paidDate})</small>` : ''}
           </div>
           <div style="display:flex; gap:6px;">
             <button class="date-step-btn" onclick="openVisualPayslip('${w.id}')">📤 Phiếu Zalo</button>
-            ${!paidRec && netPay > 0 ? `<button class="date-step-btn" style="background:var(--brand-primary); color:#FFF; border:none;" onclick="openWagePaymentSheet('${w.id}')">Chốt trả</button>` : ''}
+            ${!isPaid && netPayable > 0 ? `<button class="date-step-btn" style="background:var(--brand-primary); color:#FFF; border:none;" onclick="openWagePaymentSheet('${w.id}')">Chốt trả</button>` : ''}
           </div>
         </div>
       </div>
@@ -903,88 +1254,28 @@ function renderMoneyTab() {
     `;
   }).join("") || `<div class="item-card" style="text-align:center; padding:20px; color:var(--text-muted);">Chưa ghi nhập vật tư nào.</div>`;
 
-  // 4. Sổ quỹ thu chi tổng hợp
+  // 4. Sổ quỹ thu chi tổng hợp từ nguồn ledger đơn nhất
   renderCashflowList();
 }
 
 function renderCashflowList() {
   const listEl = document.getElementById("cashflowHistoryList");
-  let allLedger = [];
+  const fullLedger = getUnifiedCashLedger(store.settings.selectedProjectId);
+  const periodLedger = fullLedger.filter(item => isInSelectedPeriod(item.date));
 
-  // Thu chi thủ công
-  store.cashTransactions.forEach(t => {
-    if (!matchesProject(t.projectId)) return;
-    if (!isInSelectedPeriod(t.date)) return;
-    allLedger.push({
-      date: t.date,
-      title: t.category,
-      type: t.type,
-      amount: t.amountVnd,
-      source: "Sổ thu chi",
-      projectId: t.projectId
-    });
-  });
+  // Sắp xếp ngày mới nhất lên đầu để hiển thị trên UI
+  periodLedger.sort((a, b) => (b.date > a.date ? 1 : (b.date < a.date ? -1 : 0)));
 
-  // Tạm ứng tiền thợ
-  store.advances.forEach(a => {
-    if (!matchesProject(a.projectId)) return;
-    if (!isInSelectedPeriod(a.date)) return;
-    const w = store.workers.find(x => x.id === a.workerId);
-    allLedger.push({
-      date: a.date,
-      title: `Thợ ${w ? w.name : ''} tạm ứng (${a.note || 'Ứng tiền'})`,
-      type: "out",
-      amount: a.amountVnd,
-      source: "Tạm ứng thợ",
-      projectId: a.projectId
-    });
-  });
-
-  // Trả tiền vật tư
-  store.materials.forEach(m => {
-    if (!matchesProject(m.projectId)) return;
-    (m.payments || []).forEach(p => {
-      if (!isInSelectedPeriod(p.paidDate)) return;
-      allLedger.push({
-        date: p.paidDate,
-        title: `Thanh toán vật tư: ${m.name} (${m.vendor})`,
-        type: "out",
-        amount: p.amount,
-        source: "Trả nợ vật tư",
-        projectId: m.projectId
-      });
-    });
-  });
-
-  // Chi trả lương quyết toán
-  store.wagePayments.forEach(wp => {
-    if (!matchesProject(wp.projectId)) return;
-    if (!isInSelectedPeriod(wp.paidDate)) return;
-    const w = store.workers.find(x => x.id === wp.workerId);
-    allLedger.push({
-      date: wp.paidDate,
-      title: `Quyết toán lương: ${w ? w.name : ''} (Kỳ ${wp.periodId})`,
-      type: "out",
-      amount: wp.netPaid,
-      source: "Lương thợ",
-      projectId: wp.projectId
-    });
-  });
-
-  // Sắp xếp ngày mới nhất lên đầu
-  allLedger.sort((a, b) => (b.date > a.date ? 1 : -1));
-
-  listEl.innerHTML = allLedger.map(item => {
-    const prj = store.projects.find(p => p.id === item.projectId);
+  listEl.innerHTML = periodLedger.map(item => {
     return `
       <div class="item-card">
         <div class="item-card-row">
           <div>
-            <div class="item-title">${escapeHTML(item.title)}</div>
-            <div class="item-sub">📅 ${item.date} • 🏗️ ${escapeHTML(prj ? prj.name : '')} • <span class="badge ${item.source === 'Sổ thu chi' ? 'badge-blue' : 'badge-amber'}">${escapeHTML(item.source)}</span></div>
+            <div class="item-title">${escapeHTML(item.partner ? `${item.category}: ${item.partner}` : item.category)}</div>
+            <div class="item-sub">📅 ${item.date} • 🏗️ ${escapeHTML(item.projectName)} • <span class="badge ${item.source === 'Sổ thu chi' ? 'badge-blue' : 'badge-amber'}">${escapeHTML(item.source)}</span></div>
           </div>
-          <strong style="font-size:16.5px; font-variant-numeric:tabular-nums; color:${item.type === 'in' ? 'var(--brand-primary)' : 'var(--danger-debt)'}">
-            ${item.type === 'in' ? '+' : '-'}${formatVND(item.amount)}
+          <strong style="font-size:16.5px; font-variant-numeric:tabular-nums; color:${item.amountIn > 0 ? 'var(--brand-primary)' : 'var(--danger-debt)'}">
+            ${item.amountIn > 0 ? '+' : '-'}${formatVND(item.amountIn > 0 ? item.amountIn : item.amountOut)}
           </strong>
         </div>
       </div>
@@ -998,32 +1289,25 @@ window.openWagePaymentSheet = function(workerId) {
   if (!w) return;
   activeWagePaymentWorkerId = workerId;
 
+  const targetPeriod = store.settings.payrollPeriod || store.settings.selectedMonth || getTodayVN().slice(0, 7);
+  activeWagePaymentPeriodId = targetPeriod;
   const prj = store.projects.find(p => p.id === w.projectId);
-  const periodId = store.settings.selectedMonth;
 
   // Kiểm tra chống chi trả trùng
   const alreadyPaid = store.wagePayments.find(
-    wp => wp.projectId === w.projectId && wp.workerId === w.id && wp.periodId === periodId
+    wp => wp.projectId === w.projectId && wp.workerId === w.id && wp.periodId === targetPeriod
   );
   if (alreadyPaid) {
-    showToast("Lương kỳ này của thợ đã được quyết toán trước đó!");
+    showToast(`Lương kỳ ${targetPeriod} của thợ đã được quyết toán trước đó!`);
     return;
   }
 
-  const attRecords = store.attendance.filter(
-    a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
-  );
-  const totalUnits = attRecords.reduce((s, r) => s + Number(r.units || 0), 0);
-  const grossWage = attRecords.reduce((s, r) => s + Number(r.units || 0) * Number(r.rateSnapshot || w.dailyRate), 0);
-
-  const advRecords = store.advances.filter(
-    a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
-  );
-  const totalAdv = advRecords.reduce((s, r) => s + Number(r.amountVnd || 0), 0);
-  const netPay = grossWage - totalAdv;
-
-  if (netPay <= 0) {
-    showToast("Thợ đang dư ứng " + formatVND(Math.abs(netPay)) + ". Không có số tiền cần chi trả tiền mặt!");
+  const calc = calculateWorkerPayrollForPeriod(w.id, w.projectId, targetPeriod);
+  if (!calc || calc.netPayable <= 0) {
+    showToast(calc && calc.closingSurplus > 0
+      ? `Thợ đang dư ứng ${formatVND(calc.closingSurplus)}. Không có số tiền cần chi trả tiền mặt!`
+      : "Không có số tiền cần chi trả trong kỳ này!"
+    );
     return;
   }
 
@@ -1031,11 +1315,14 @@ window.openWagePaymentSheet = function(workerId) {
   box.innerHTML = `
     <div class="review-row"><span class="review-label">Họ tên thợ:</span><span class="review-val">${escapeHTML(w.name)}</span></div>
     <div class="review-row"><span class="review-label">Công trình:</span><span class="review-val">${escapeHTML(prj ? prj.name : '')}</span></div>
-    <div class="review-row"><span class="review-label">Kỳ quyết toán:</span><span class="review-val">${periodId}</span></div>
-    <div class="review-row"><span class="review-label">Tổng công:</span><span class="review-val">${totalUnits} công</span></div>
-    <div class="review-row"><span class="review-label">Lương gộp:</span><span class="review-val">${formatVND(grossWage)}</span></div>
-    <div class="review-row"><span class="review-label">Khấu trừ tiền ứng:</span><span class="review-val" style="color:var(--amber-warn);">-${formatVND(totalAdv)}</span></div>
-    <div class="review-row" style="padding-top:6px; border-top:1px dashed var(--border-subtle);"><span class="review-label"><strong>THỰC CHI TIỀN MẶT:</strong></span><span class="review-val" style="font-size:18px; color:var(--brand-primary);">${formatVND(netPay)}</span></div>
+    <div class="review-row"><span class="review-label">Kỳ quyết toán:</span><span class="review-val">${targetPeriod}</span></div>
+    <div class="review-row"><span class="review-label">Tổng công trong kỳ:</span><span class="review-val">${calc.totalUnits} công</span></div>
+    <div class="review-row"><span class="review-label">Lương gộp:</span><span class="review-val">${formatVND(calc.grossWage)}</span></div>
+    <div class="review-row"><span class="review-label">Khấu trừ tiền ứng trong kỳ:</span><span class="review-val" style="color:var(--amber-warn);">-${formatVND(calc.periodAdvance)}</span></div>
+    ${calc.carryForwardIn > 0 ? `
+      <div class="review-row"><span class="review-label">Khấu trừ dư ứng kỳ trước:</span><span class="review-val" style="color:var(--danger-debt);">-${formatVND(calc.carryForwardIn)}</span></div>
+    ` : ''}
+    <div class="review-row" style="padding-top:6px; border-top:1px dashed var(--border-subtle);"><span class="review-label"><strong>THỰC CHI TIỀN MẶT:</strong></span><span class="review-val" style="font-size:18px; color:var(--brand-primary);">${formatVND(calc.netPayable)}</span></div>
   `;
 
   document.getElementById("wagePaymentDate").value = getTodayVN();
@@ -1047,45 +1334,51 @@ document.getElementById("btnConfirmWagePayout").addEventListener("click", () => 
   const w = store.workers.find(x => x.id === activeWagePaymentWorkerId);
   if (!w) return;
 
+  const targetPeriod = activeWagePaymentPeriodId || store.settings.payrollPeriod || store.settings.selectedMonth || getTodayVN().slice(0, 7);
+
+  // Kiểm tra chống chi trả trùng ngay lập tức trong hàm xác nhận
+  const alreadyPaid = store.wagePayments.find(
+    wp => wp.projectId === w.projectId && wp.workerId === w.id && wp.periodId === targetPeriod
+  );
+  if (alreadyPaid) {
+    showToast(`Lương kỳ ${targetPeriod} của thợ đã được quyết toán trước đó! Không thể chi trả trùng.`);
+    document.getElementById("sheetWagePayment").hidden = true;
+    return;
+  }
+
+  const calc = calculateWorkerPayrollForPeriod(w.id, w.projectId, targetPeriod);
+  if (!calc || calc.netPayable <= 0) {
+    showToast("Không có số tiền cần chi trả tiền mặt!");
+    document.getElementById("sheetWagePayment").hidden = true;
+    return;
+  }
+
   const paidDate = document.getElementById("wagePaymentDate").value || getTodayVN();
-  const note = document.getElementById("wagePaymentNote").value.trim() || "Chi trả lương";
-  const periodId = store.settings.selectedMonth;
-
-  // Tính lại số tiền
-  const attRecords = store.attendance.filter(
-    a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
-  );
-  const grossWage = attRecords.reduce((s, r) => s + Number(r.units || 0) * Number(r.rateSnapshot || w.dailyRate), 0);
-
-  const advRecords = store.advances.filter(
-    a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
-  );
-  const totalAdv = advRecords.reduce((s, r) => s + Number(r.amountVnd || 0), 0);
-  const netPay = grossWage - totalAdv;
-
-  if (netPay <= 0) return;
+  const note = document.getElementById("wagePaymentNote").value.trim() || `Quyết toán lương kỳ ${targetPeriod}`;
 
   store.wagePayments.push({
-    id: "WPAY_" + Date.now(),
+    id: "WPAY_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6),
     projectId: w.projectId,
     workerId: w.id,
-    periodId,
-    grossWage,
-    advanceDeducted: totalAdv,
-    netPaid: netPay,
+    periodId: targetPeriod,
+    grossWage: calc.grossWage,
+    periodAdvanceDeducted: calc.periodAdvance,
+    carryForwardDeducted: calc.carryForwardIn,
+    advanceDeducted: calc.advanceDeducted,
+    netPaid: calc.netPayable,
     paidDate,
     note
   });
 
   store.auditLogs.push({
     time: new Date().toISOString(),
-    action: `Quyết toán chi lương ${formatVND(netPay)} cho ${w.name} (kỳ ${periodId})`
+    action: `Quyết toán chi lương ${formatVND(calc.netPayable)} cho ${w.name} (kỳ ${targetPeriod})`
   });
 
   saveStore();
   document.getElementById("sheetWagePayment").hidden = true;
   renderAll();
-  showToast(`Đã ghi nhận chi trả ${formatVND(netPay)} cho ${w.name}!`);
+  showToast(`Đã ghi nhận chi trả ${formatVND(calc.netPayable)} cho ${w.name}!`);
 });
 
 // ================= THANH TOÁN NỢ VẬT TƯ (TỪNG PHẦN HOẶC TOÀN BỘ) =================
@@ -1336,9 +1629,18 @@ document.getElementById("btnSaveSupplementalSign").addEventListener("click", () 
 
   const nowIso = new Date().toISOString();
   adv.signedStatus = "signed";
+  adv.signatureType = "digital_ink"; // Chữ ký viết tay số hóa qua S-Pen (digital ink), không phải chữ ký số PKI
   adv.signatureDataUrl = suppCanvas.toDataURL("image/png");
   adv.signedAt = nowIso;
-  adv.signatureHash = `${adv.projectId}|${adv.workerId}|${adv.amountVnd}|${adv.date}|${nowIso}`;
+  adv.docVersion = (Number(adv.docVersion) || 1) + 1;
+  adv.docRef = adv.docRef || ("REF_ADV_" + adv.projectId + "_" + adv.workerId + "_" + adv.date);
+  adv.signatureHash = adv.docRef; // Giữ alias tương thích
+  if (!Array.isArray(adv.adjustments)) adv.adjustments = [];
+  adv.adjustments.push({
+    action: "supplemental_sign",
+    time: nowIso,
+    note: "Ký bổ sung chữ ký viết tay số hóa qua bút S-Pen"
+  });
 
   store.auditLogs.push({
     time: nowIso,
@@ -1452,6 +1754,7 @@ document.getElementById("btnSaveAdvance").addEventListener("click", () => {
   const advDate = document.getElementById("advDateInput").value || getTodayVN();
   const sigUrl = hasSignatureInk ? spenCanvas.toDataURL("image/png") : null;
   const nowIso = new Date().toISOString();
+  const docRef = "REF_ADV_" + w.projectId + "_" + w.id + "_" + advDate.replace(/-/g, "") + "_" + Date.now().toString(36);
 
   store.advances.push({
     id: "ADV_" + Date.now(),
@@ -1461,9 +1764,13 @@ document.getElementById("btnSaveAdvance").addEventListener("click", () => {
     date: advDate,
     note: document.getElementById("advNoteInput").value.trim() || "Tạm ứng tiền",
     signedStatus: hasSignatureInk ? "signed" : "unsigned",
+    signatureType: hasSignatureInk ? "digital_ink" : null,
     signatureDataUrl: sigUrl,
     signedAt: hasSignatureInk ? nowIso : null,
-    signatureHash: hasSignatureInk ? `${w.projectId}|${w.id}|${currentAdvanceAmount}|${advDate}|${nowIso}` : null
+    docVersion: 1,
+    docRef: docRef,
+    signatureHash: docRef,
+    adjustments: []
   });
 
   saveStore();
@@ -1478,18 +1785,13 @@ window.openVisualPayslip = function(workerId) {
   if (!w) return;
   activePayslipWorker = w;
 
+  const targetPeriod = store.settings.payrollPeriod || store.settings.selectedMonth || getTodayVN().slice(0, 7);
   const prj = store.projects.find(p => p.id === w.projectId);
-  const attRecords = store.attendance.filter(
-    a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
-  );
-  const advRecords = store.advances.filter(
-    a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
-  );
 
-  const totalUnits = attRecords.reduce((s, r) => s + Number(r.units || 0), 0);
-  const grossWage = attRecords.reduce((s, r) => s + Number(r.units || 0) * Number(r.rateSnapshot || w.dailyRate), 0);
-  const totalAdv = advRecords.reduce((s, r) => s + Number(r.amountVnd || 0), 0);
-  const netPay = grossWage - totalAdv;
+  const calc = calculateWorkerPayrollForPeriod(w.id, w.projectId, targetPeriod);
+  if (!calc) return;
+
+  const { totalUnits, grossWage, periodAdvance, carryForwardIn, advanceDeducted, netPayable, closingSurplus, isPaid, wagePayment, advRecords } = calc;
 
   const canvas = document.getElementById("payslipRenderCanvas");
   const ctx = canvas.getContext("2d");
@@ -1501,51 +1803,60 @@ window.openVisualPayslip = function(workerId) {
   ctx.fillStyle = "#117D70";
   ctx.fillRect(0, 0, canvas.width, 110);
   ctx.fillStyle = "#FFFFFF";
-  ctx.font = "bold 26px sans-serif";
+  ctx.font = "bold 24px sans-serif";
   ctx.fillText("PHIẾU QUYẾT TOÁN LƯƠNG THỢ", 30, 48);
-  ctx.font = "16px sans-serif";
-  ctx.fillText(`Công trình: ${prj ? prj.name : 'Xây dựng'} • Kỳ: ${store.settings.selectedMonth}`, 30, 82);
+  ctx.font = "15px sans-serif";
+  ctx.fillText(`Công trình: ${prj ? prj.name : 'Xây dựng'} • Kỳ: ${targetPeriod}`, 30, 82);
 
   // Thông tin thợ
   ctx.fillStyle = "#18312E";
-  ctx.font = "bold 22px sans-serif";
-  ctx.fillText(`Họ tên thợ: ${w.name}`, 30, 160);
-  ctx.font = "16px sans-serif";
+  ctx.font = "bold 20px sans-serif";
+  ctx.fillText(`Họ tên thợ: ${w.name}`, 30, 155);
+  ctx.font = "15px sans-serif";
   ctx.fillStyle = "#4A6360";
-  ctx.fillText(`Vai trò: ${w.role}  |  Đơn giá: ${formatVND(w.dailyRate)}/công`, 30, 192);
+  ctx.fillText(`Vai trò: ${w.role}  |  Đơn giá: ${formatVND(w.dailyRate)}/công`, 30, 185);
 
-  // Khung tổng kết công
+  // Khung tổng kết công & khấu trừ
   ctx.fillStyle = "#F5F7F6";
-  ctx.fillRect(30, 215, canvas.width - 60, 125);
+  ctx.fillRect(30, 205, canvas.width - 60, 145);
   ctx.strokeStyle = "#DFE5E3";
-  ctx.strokeRect(30, 215, canvas.width - 60, 125);
+  ctx.strokeRect(30, 205, canvas.width - 60, 145);
 
   ctx.fillStyle = "#18312E";
-  ctx.font = "bold 18px sans-serif";
-  ctx.fillText(`1. Tổng ngày công trong kỳ: ${totalUnits} công`, 50, 255);
-  ctx.fillText(`2. Lương gộp thành tiền: ${formatVND(grossWage)}`, 50, 290);
+  ctx.font = "bold 16px sans-serif";
+  ctx.fillText(`1. Tổng ngày công trong kỳ: ${totalUnits} công`, 50, 240);
+  ctx.fillText(`2. Lương gộp thành tiền: ${formatVND(grossWage)}`, 50, 272);
   ctx.fillStyle = "#A36A16";
-  ctx.fillText(`3. Tổng tạm ứng: -${formatVND(totalAdv)} (${advRecords.length} lần)`, 50, 325);
+  ctx.fillText(`3. Tạm ứng trong kỳ: -${formatVND(periodAdvance)} (${advRecords.length} lần)`, 50, 304);
+  if (carryForwardIn > 0) {
+    ctx.fillStyle = "#C0392B";
+    ctx.fillText(`4. Dư ứng kỳ trước chuyển sang: -${formatVND(carryForwardIn)}`, 50, 336);
+  }
 
   // Chi tiết tạm ứng
   ctx.fillStyle = "#18312E";
-  ctx.font = "bold 17px sans-serif";
+  ctx.font = "bold 16px sans-serif";
   ctx.fillText("Chi tiết các khoản tạm ứng:", 30, 380);
 
-  let yPos = 415;
+  let yPos = 410;
   if (advRecords.length === 0) {
-    ctx.font = "16px sans-serif";
+    ctx.font = "15px sans-serif";
     ctx.fillStyle = "#7E9592";
     ctx.fillText("Không có khoản tạm ứng nào trong kỳ này.", 50, yPos);
   } else {
     advRecords.slice(0, 4).forEach(adv => {
-      ctx.font = "15px sans-serif";
+      ctx.font = "14px sans-serif";
       ctx.fillStyle = "#18312E";
       const statusTxt = adv.signedStatus === "signed" ? "[Đã ký S-Pen]" : "[Chưa ký]";
-      ctx.fillText(`• Ngày ${adv.date}: ${formatVND(adv.amountVnd)} (${adv.note}) ${statusTxt}`, 40, yPos);
-      yPos += 30;
+      ctx.fillText(`• Ngày ${adv.date}: ${formatVND(adv.amountVnd)} (${adv.note || 'Ứng tiền'}) ${statusTxt}`, 40, yPos);
+      yPos += 28;
     });
   }
+
+  // Ghi chú chứng từ đối soát
+  ctx.fillStyle = "#7E9592";
+  ctx.font = "italic 13px sans-serif";
+  ctx.fillText("Chứng từ đối soát nội bộ — Chữ ký viết tay số hóa qua S-Pen (Digital Ink)", 30, 625);
 
   // Khung thực lĩnh
   ctx.fillStyle = "#D9F3EB";
@@ -1555,10 +1866,14 @@ window.openVisualPayslip = function(workerId) {
   ctx.strokeRect(30, 650, canvas.width - 60, 120);
 
   ctx.fillStyle = "#0E685D";
-  ctx.font = "bold 18px sans-serif";
-  ctx.fillText("THỰC LĨNH CÒN NHẬN:", 50, 690);
-  ctx.font = "bold 36px sans-serif";
-  ctx.fillText(netPay >= 0 ? formatVND(netPay) : "Dư ứng " + formatVND(Math.abs(netPay)), 50, 740);
+  ctx.font = "bold 17px sans-serif";
+  ctx.fillText(netPayable > 0 || isPaid ? "THỰC LĨNH CÒN NHẬN:" : "DƯ ỨNG KHẤU TRỪ KỲ SAU:", 50, 690);
+  ctx.font = "bold 34px sans-serif";
+  ctx.fillText(
+    isPaid ? formatVND(wagePayment.netPaid) : (netPayable > 0 ? formatVND(netPayable) : "Âm " + formatVND(closingSurplus)),
+    50,
+    740
+  );
 
   document.getElementById("sheetPayslipPreview").hidden = false;
 };
@@ -1885,14 +2200,10 @@ document.getElementById("btnSaveMaterial").addEventListener("click", () => {
 });
 
 // ================= XUẤT EXCEL .XLSX ĐA SHEET & NHẬP SAO LƯU =================
-document.getElementById("btnExportExcel").addEventListener("click", () => {
-  if (typeof XLSX === "undefined") {
-    exportBackupJson();
-    return;
-  }
+window.generateExcelWorkbook = function() {
+  if (typeof XLSX === "undefined") return null;
   const wb = XLSX.utils.book_new();
 
-  // 1. Sheet Tổng quan tồn quỹ
   const fin = calculateFinancials();
   const summaryData = [
     { Chỉ_Tiêu: "Tồn quỹ tiền mặt lũy kế", Giá_Trị_VND: fin.cumulativeBalance },
@@ -1903,14 +2214,9 @@ document.getElementById("btnExportExcel").addEventListener("click", () => {
     { Chỉ_Tiêu: "Công nợ vật tư còn mở", Giá_Trị_VND: fin.openMaterialDebt }
   ];
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryData), "TongQuan_TonQuy");
-
-  // 2. Sheet Danh sách công trình
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.projects), "DanhSach_CongTrinh");
-
-  // 3. Sheet Danh sách thợ
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.workers), "DoiTho");
 
-  // 4. Sheet Chấm công
   const attExport = store.attendance.map(a => {
     const w = store.workers.find(x => x.id === a.workerId);
     const p = store.projects.find(x => x.id === a.projectId);
@@ -1925,7 +2231,6 @@ document.getElementById("btnExportExcel").addEventListener("click", () => {
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(attExport), "ChamCong");
 
-  // 5. Sheet Tạm ứng
   const advExport = store.advances.map(a => {
     const w = store.workers.find(x => x.id === a.workerId);
     const p = store.projects.find(x => x.id === a.projectId);
@@ -1936,12 +2241,14 @@ document.getElementById("btnExportExcel").addEventListener("click", () => {
       SoTienUng: a.amountVnd,
       LyDo: a.note,
       TrangThaiKy: a.signedStatus === "signed" ? "Đã ký S-Pen" : "Chưa ký",
-      MaHash: a.signatureHash || ""
+      HinhThucKy: a.signedStatus === "signed" ? "Chữ ký viết tay số hóa qua S-Pen (Digital Ink)" : "Chưa ký",
+      MaDoiSoatChungTu: a.docRef || a.id,
+      ThoiDiemKy: a.signedAt || "",
+      PhienBanChungTu: a.docVersion || 1
     };
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(advExport), "TamUng_ChuKy");
 
-  // 6. Sheet Bảng lương quyết toán
   const wageExport = store.wagePayments.map(wp => {
     const w = store.workers.find(x => x.id === wp.workerId);
     const p = store.projects.find(x => x.id === wp.projectId);
@@ -1958,7 +2265,6 @@ document.getElementById("btnExportExcel").addEventListener("click", () => {
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(wageExport), "BangLuong_QuyetToan");
 
-  // 7. Sheet Vật tư và Công nợ
   const matExport = store.materials.map(m => {
     const p = store.projects.find(x => x.id === m.projectId);
     const total = Number(m.totalAmount || (m.qty * m.unitPrice) || 0);
@@ -1978,9 +2284,30 @@ document.getElementById("btnExportExcel").addEventListener("click", () => {
   });
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(matExport), "VatTu_CongNo");
 
-  // 8. Sổ quỹ tiền mặt chi tiết
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.cashTransactions), "SoQuy_TienMat");
+  const cashLedger = getUnifiedCashLedger(store.settings.selectedProjectId);
+  const soQuyExport = cashLedger.map(item => ({
+    Ngay: item.date,
+    CongTrinh: item.projectName,
+    LoaiGiaoDich: item.category,
+    DoiTuong: item.partner,
+    NguonGiaoDich: item.source,
+    SoTienThu_VND: item.amountIn,
+    SoTienChi_VND: item.amountOut,
+    SoDuLuyKe_VND: item.runningBalance,
+    GhiChu: item.note
+  }));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(soQuyExport), "SoQuy_TienMat");
 
+  return wb;
+};
+
+document.getElementById("btnExportExcel").addEventListener("click", () => {
+  if (typeof XLSX === "undefined") {
+    exportBackupJson();
+    return;
+  }
+  const wb = window.generateExcelWorkbook();
+  if (!wb) return;
   XLSX.writeFile(wb, `So_Cong_Trinh_GridCraft_${store.settings.selectedDate}.xlsx`);
   showToast("Đã xuất file Excel .xlsx thành công!");
 });
@@ -2183,14 +2510,9 @@ document.querySelectorAll(".filter-chips .chip").forEach(chip => {
 
 document.getElementById("projectSearchInput")?.addEventListener("input", renderProjectsTab);
 
-// Khởi tạo IndexedDB ở chế độ ngầm và render ban đầu
+// Khởi tạo IndexedDB và đồng bộ an toàn (Single Source of Truth, IDB cũ không bao giờ ghi đè LocalStorage mới hơn)
 AppStorage.initDB().then(() => {
-  AppStorage.loadFromIndexedDB().then(idbStore => {
-    if (idbStore) {
-      store = idbStore;
-      renderAll();
-    }
-  });
+  AppStorage.syncWithIndexedDB();
 });
 
 renderAll();
