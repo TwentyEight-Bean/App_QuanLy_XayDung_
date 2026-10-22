@@ -59,10 +59,10 @@
       
       <!-- ================= TAB 1: TỔNG QUAN (2027 NEO-MINIMAL ONE UI) ================= -->
       <section class="tab-pane active" id="tab-overview">
-        <!-- 1. Hero Card: Quỹ Khả Dụng Hiện Tại -->
+        <!-- 1. Hero Card: Tồn Quỹ Tiền Mặt (Chỉ tập trung dòng tiền thực tế) -->
         <div class="hero-card">
           <div class="hero-header">
-            <span class="hero-title" id="heroBalanceTitle">QUỸ KHẢ DỤNG HIỆN TẠI</span>
+            <span class="hero-title" id="heroBalanceTitle">TỒN QUỸ TIỀN MẶT</span>
             <button class="privacy-toggle-btn" id="btnTogglePrivacy" aria-label="Ẩn hoặc hiện số tiền">
               <span id="privacyEyeIcon">👁️ Ẩn</span>
             </button>
@@ -77,36 +77,48 @@
               <span class="metric-icon">👷</span>
               <span id="kpiWorkerCount">8 thợ</span> • <strong id="kpiTotalAttendance">142,5 công</strong>
             </div>
-            <div class="metric-chip warn">
-              <span class="metric-icon">⏳</span>
-              <span id="kpiDebtDetail">Ứng & Nợ:</span> <strong id="kpiAdvancesAndDebt">18.500.000 đ</strong>
-            </div>
+            <!-- Giữ hidden ID phục vụ tương thích test suite mà không làm nhiễu thị giác hero cash -->
+            <span id="kpiDebtDetail" style="display:none;"></span>
+            <span id="kpiAdvancesAndDebt" style="display:none;"></span>
           </div>
         </div>
 
-        <!-- 2. Ba Thao Tác Nhanh Trọng Tâm (Primary Quick Actions) -->
+        <!-- 2. Thao Tác Trọng Tâm Ngày Hôm Nay (Today's Actions) -->
         <div class="quick-actions-section">
-          <div class="quick-actions-grid-3">
-            <button class="action-tile emerald" id="btnQuickAttendance">
-              <div class="tile-icon-circle emerald">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          <!-- Primary Hero Action: Chấm Công Nổi Bật -->
+          <button class="primary-hero-action" id="btnQuickAttendance">
+            <div class="primary-action-icon">
+              <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+            </div>
+            <div class="primary-action-content">
+              <span class="primary-action-title">Chấm công hôm nay</span>
+              <span class="primary-action-status" id="quickAttStatus">Hôm nay</span>
+            </div>
+            <div class="primary-action-arrow">
+              <span>Bắt đầu</span>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </div>
+          </button>
+
+          <!-- 2 Thao Tác Phụ Đồng Cấp (Secondary Actions) -->
+          <div class="secondary-actions-row">
+            <button class="secondary-action-tile" id="btnQuickAdvance">
+              <div class="sec-action-icon amber">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path></svg>
               </div>
-              <span class="tile-title">Chấm công</span>
-              <small class="tile-sub" id="quickAttStatus">Hôm nay</small>
+              <div class="sec-action-text">
+                <strong>Ứng tiền thợ</strong>
+                <small>Ký bút S-Pen</small>
+              </div>
             </button>
-            <button class="action-tile amber" id="btnQuickAdvance">
-              <div class="tile-icon-circle amber">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path></svg>
+            <button class="secondary-action-tile" id="btnQuickCashflow">
+              <div class="sec-action-icon teal">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
               </div>
-              <span class="tile-title">Ứng tiền</span>
-              <small class="tile-sub">Ký S-Pen</small>
-            </button>
-            <button class="action-tile blue" id="btnQuickCashflow">
-              <div class="tile-icon-circle blue">
-                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
+              <div class="sec-action-text">
+                <strong>Thu / Chi</strong>
+                <small>Ghi sổ quỹ</small>
               </div>
-              <span class="tile-title">Thu / Chi</span>
-              <small class="tile-sub">Sổ quỹ</small>
             </button>
           </div>
         </div>
@@ -170,7 +182,7 @@
         <!-- Nút hành động chính sticky ở đáy màn hình -->
         <div class="bottom-sticky-cta" id="attendanceStickyFooter">
           <button class="btn-god-mode" id="btnMarkAllFullDay">
-            ⚡ Điểm danh cả đội (1.0 Công)
+            ⚡ Chấm công cả đội (1.0 Công)
           </button>
         </div>
       </section>

@@ -522,9 +522,151 @@ html, body {
   color: var(--text-secondary);
 }
 
-/* KHỐI HÀNH ĐỘNG NHANH CÔNG TRƯỜNG (2027 NEO-MINIMAL 3 TILES) */
+/* KHỐI HÀNH ĐỘNG NHANH CÔNG TRƯỜNG (2027 ONE UI HIERARCHY) */
 .quick-actions-section, .quick-actions-card {
   margin-bottom: 16px;
+}
+
+/* PRIMARY HERO ACTION (CHẤM CÔNG HÔM NAY) */
+.primary-hero-action {
+  width: 100%;
+  min-height: 64px;
+  background: linear-gradient(135deg, #0F766E 0%, #115E59 100%);
+  color: #FFFFFF;
+  border: none;
+  border-radius: 18px;
+  padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 4px 16px rgba(15, 118, 110, 0.28);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+  text-align: left;
+}
+
+.primary-hero-action:active {
+  transform: scale(0.985);
+  box-shadow: 0 2px 8px rgba(15, 118, 110, 0.2);
+}
+
+.primary-action-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.20);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #FFFFFF;
+}
+
+.primary-action-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.primary-action-title {
+  display: block;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  line-height: 1.2;
+}
+
+.primary-action-status {
+  display: block;
+  font-size: 12px;
+  opacity: 0.92;
+  font-weight: 600;
+  margin-top: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.primary-action-arrow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12.5px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.18);
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  flex-shrink: 0;
+}
+
+/* SECONDARY ACTIONS ROW (ỨNG TIỀN + THU CHI) */
+.secondary-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.secondary-action-tile {
+  min-height: 58px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
+  border-radius: 16px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+
+.secondary-action-tile:active {
+  transform: scale(0.98);
+  background: var(--bg-subtle);
+}
+
+.sec-action-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sec-action-icon.amber {
+  background: var(--amber-soft);
+  color: var(--amber-warn);
+}
+
+.sec-action-icon.teal {
+  background: var(--brand-tint);
+  color: var(--brand-primary);
+}
+
+.sec-action-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.sec-action-text strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.sec-action-text small {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-top: 2px;
 }
 
 .section-heading {
@@ -716,6 +858,21 @@ html, body {
   background: var(--danger-soft);
 }
 
+.smart-alert-card.alert-info {
+  border-left: 4px solid var(--blue-info);
+  background: var(--blue-soft);
+}
+
+.project-overview-card.active-project {
+  border: 1.5px solid var(--brand-primary);
+  background: var(--brand-tint);
+}
+
+.project-card-modern.active-project-card {
+  border: 1.5px solid var(--brand-primary);
+  background: var(--brand-tint);
+}
+
 .alert-icon-holder {
   font-size: 20px;
   flex-shrink: 0;
@@ -843,6 +1000,8 @@ html, body {
 .badge-amber { background: var(--amber-soft); color: var(--amber-warn); }
 .badge-blue  { background: var(--blue-soft);  color: var(--blue-info); }
 .badge-red   { background: var(--danger-soft); color: var(--danger-debt); }
+.badge-subtle{ background: var(--bg-subtle);  color: var(--text-secondary); }
+.badge-ochre { background: #FEF3C7; color: #92400E; }
 
 /* NÚT KÝ BÙ TẠM ỨNG */
 .btn-sign-supplement {
@@ -946,10 +1105,10 @@ html, body {
   margin-top: 1px;
 }
 
-/* Thanh tóm tắt công */
+/* Thanh tóm tắt công (2027 SINGLE-LINE SUMMARY STRIP) */
 .attendance-summary-strip {
   position: sticky;
-  top: 104px;
+  top: 98px;
   z-index: 20;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
@@ -960,15 +1119,66 @@ html, body {
   font-weight: 700;
   margin-bottom: 12px;
   display: flex;
-  justify-content: space-around;
+  align-items: center;
+  justify-content: space-between;
   box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 
-.attendance-summary-strip span {
+.att-summary-headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+
+.att-summary-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
 }
+
+.att-summary-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand-primary);
+  flex-shrink: 0;
+}
+
+.att-summary-pill.complete .att-summary-dot {
+  background: #059669;
+  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.2);
+}
+
+.att-stat-mini-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.att-mini-chip {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.att-mini-chip.full { background: var(--brand-tint); color: var(--brand-primary); }
+.att-mini-chip.half { background: var(--amber-soft); color: var(--amber-warn); }
+.att-mini-chip.ot   { background: var(--blue-soft);  color: var(--blue-info); }
+.att-mini-chip.off  { background: var(--bg-subtle);  color: var(--text-muted); }
+.att-mini-chip.unset{ background: var(--amber-soft); color: var(--amber-warn); font-weight: 800; }
 
 /* THẺ CHẤM CÔNG TỪNG THỢ */
 .worker-att-card {
@@ -1260,6 +1470,134 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* CONTINUOUS DATE GROUPED LEDGER STREAM */
+.ledger-date-group {
+  margin-bottom: 14px;
+}
+
+.ledger-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 6px;
+}
+
+.ledger-group-title {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ledger-group-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ledger-group-surface {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.ledger-row-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background var(--transition-fast);
+}
+
+.ledger-group-surface .ledger-row-item:last-child {
+  border-bottom: none;
+}
+
+.ledger-row-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.ledger-row-avatar.icon-income   { background: var(--brand-tint); color: var(--brand-primary); }
+.ledger-row-avatar.icon-expense  { background: var(--bg-subtle);  color: var(--text-secondary); }
+.ledger-row-avatar.icon-advance  { background: var(--amber-soft); color: var(--amber-warn); }
+.ledger-row-avatar.icon-salary   { background: var(--danger-soft); color: var(--danger-debt); }
+.ledger-row-avatar.icon-material { background: #FEF3C7; color: #92400E; }
+
+.ledger-row-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.ledger-row-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+
+.ledger-row-sub {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ledger-row-trailing {
+  text-align: right;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.ledger-amount {
+  font-size: 15.5px;
+  font-weight: 800;
+  letter-spacing: -0.2px;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+.ledger-amount.amount-in {
+  color: #059669;
+}
+
+.ledger-amount.amount-out {
+  color: var(--text-primary);
+}
+
+.ledger-row-tag {
+  display: inline-block;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-top: 2px;
+}
+
+/* TABULAR NUMBERS RULE - CHỐNG XUỐNG DÒNG ĐƠN VỊ TIỀN TỆ TUYỆT ĐỐI */
+.hero-amount, .ledger-amount, .ledger-banner-balance, .kpi-value, .amount-val, .review-val, .rate-val {
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums !important;
+  font-feature-settings: "tnum" !important;
 }
 
 .ledger-item-card {
