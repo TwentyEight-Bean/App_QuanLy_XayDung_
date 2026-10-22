@@ -57,72 +57,70 @@
     <!-- ================= VÙNG NỘI DUNG CUỘN ================= -->
     <main class="main-content" id="mainViewport">
       
-      <!-- ================= TAB 1: TỔNG QUAN ================= -->
+      <!-- ================= TAB 1: TỔNG QUAN (2027 NEO-MINIMAL ONE UI) ================= -->
       <section class="tab-pane active" id="tab-overview">
-        <!-- 1 Hero Card: Tồn quỹ tiền mặt thực tế -->
+        <!-- 1. Hero Card: Quỹ Khả Dụng Hiện Tại -->
         <div class="hero-card">
           <div class="hero-header">
-            <span class="hero-title" id="heroBalanceTitle">TỒN QUỸ TIỀN MẶT THỰC TẾ</span>
+            <span class="hero-title" id="heroBalanceTitle">QUỸ KHẢ DỤNG HIỆN TẠI</span>
             <button class="privacy-toggle-btn" id="btnTogglePrivacy" aria-label="Ẩn hoặc hiện số tiền">
-              <span id="privacyEyeIcon">👁️ Ẩn số tiền</span>
+              <span id="privacyEyeIcon">👁️ Ẩn</span>
             </button>
           </div>
           <div class="hero-amount" id="heroCashBalance">45.200.000 đ</div>
           <div class="hero-sub" id="heroPeriodSummary">
-            <span class="stat-pill in" id="heroPillIn">Thu +80.000.000 đ</span>
-            <span class="stat-pill out" id="heroPillOut">Chi -34.800.000 đ</span>
+            <span class="stat-pill in" id="heroPillIn">↑ Thu +80.000.000 đ</span>
+            <span class="stat-pill out" id="heroPillOut">↓ Chi -34.800.000 đ</span>
+          </div>
+          <div class="hero-footer-metrics">
+            <div class="metric-chip">
+              <span class="metric-icon">👷</span>
+              <span id="kpiWorkerCount">8 thợ</span> • <strong id="kpiTotalAttendance">142,5 công</strong>
+            </div>
+            <div class="metric-chip warn">
+              <span class="metric-icon">⏳</span>
+              <span id="kpiDebtDetail">Ứng & Nợ:</span> <strong id="kpiAdvancesAndDebt">18.500.000 đ</strong>
+            </div>
           </div>
         </div>
 
-        <!-- 2 Thẻ KPI trong kỳ -->
-        <div class="kpi-grid">
-          <div class="kpi-card">
-            <span class="kpi-label">TỔNG CÔNG KỲ NÀY</span>
-            <strong class="kpi-value" id="kpiTotalAttendance">142,5 công</strong>
-            <span class="kpi-meta" id="kpiWorkerCount">8 thợ đang làm việc</span>
-          </div>
-          <div class="kpi-card">
-            <span class="kpi-label">TIỀN ỨNG & NỢ VẬT TƯ</span>
-            <strong class="kpi-value amber" id="kpiAdvancesAndDebt">18.500.000 đ</strong>
-            <span class="kpi-meta" id="kpiDebtDetail">Ứng: 6,5tr • Nợ VT: 12tr</span>
-          </div>
-        </div>
-
-        <!-- 1 Khối Hành Động Chính (Primary Action) -->
-        <div class="quick-actions-card">
-          <h2 class="section-heading">Thao tác nhanh hôm nay</h2>
-          <div class="quick-actions-grid">
-            <button class="action-big-btn primary" id="btnQuickAttendance">
-              <div class="action-icon-circle">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        <!-- 2. Ba Thao Tác Nhanh Trọng Tâm (Primary Quick Actions) -->
+        <div class="quick-actions-section">
+          <div class="quick-actions-grid-3">
+            <button class="action-tile emerald" id="btnQuickAttendance">
+              <div class="tile-icon-circle emerald">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
               </div>
-              <div class="action-text">
-                <strong>Chấm công ngay</strong>
-                <small id="quickAttStatus">Hôm nay chưa chấm đủ</small>
-              </div>
+              <span class="tile-title">Chấm công</span>
+              <small class="tile-sub" id="quickAttStatus">Hôm nay</small>
             </button>
-            <button class="action-big-btn secondary" id="btnQuickAdvance">
-              <div class="action-icon-circle">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path><path d="M2 2l7.586 7.586"></path><circle cx="11" cy="11" r="2"></circle></svg>
+            <button class="action-tile amber" id="btnQuickAdvance">
+              <div class="tile-icon-circle amber">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19l7-7 3 3-7 7-3-3z"></path><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path></svg>
               </div>
-              <div class="action-text">
-                <strong>Ghi ứng tiền (S-Pen)</strong>
-                <small>Ký nhận tại chỗ</small>
+              <span class="tile-title">Ứng tiền</span>
+              <small class="tile-sub">Ký S-Pen</small>
+            </button>
+            <button class="action-tile blue" id="btnQuickCashflow">
+              <div class="tile-icon-circle blue">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
               </div>
+              <span class="tile-title">Thu / Chi</span>
+              <small class="tile-sub">Sổ quỹ</small>
             </button>
           </div>
         </div>
 
-        <!-- Nhắc việc thông minh (Chỉ hiện khi có việc cần giải quyết) -->
+        <!-- 3. Nhắc Việc Cần Xử Lý (Chỉ hiện khi có phát sinh thực tế) -->
         <div class="alerts-container" id="overviewAlerts"></div>
 
-        <!-- Danh sách tóm tắt công trình -->
+        <!-- 4. Công Trình Đang Thi Công / Gần Đây -->
         <div class="section-block">
           <div class="section-header-row">
-            <h2 class="section-heading">Tình trạng các công trình</h2>
-            <div style="display:flex; gap:8px;">
-              <button class="link-btn" id="btnBackupRestore">Sao lưu JSON</button>
-              <button class="link-btn" id="btnImportBackup">Nhập sao lưu</button>
+            <h2 class="section-heading">Công trình đang làm</h2>
+            <div class="backup-actions">
+              <button class="link-btn" id="btnBackupRestore">Sao lưu</button>
+              <button class="link-btn" id="btnImportBackup">Nhập file</button>
               <input type="file" id="inputBackupFile" accept=".json" style="display:none;" />
             </div>
           </div>
@@ -130,71 +128,82 @@
         </div>
       </section>
 
-      <!-- ================= TAB 2: CHẤM CÔNG ================= -->
+      <!-- ================= TAB 2: CHẤM CÔNG (2027 CLEAN TOUCH) ================= -->
       <section class="tab-pane" id="tab-attendance">
         <!-- Cảnh báo nếu đang chọn Tất cả công trình -->
         <div class="notice-banner" id="attendanceAllProjectsBanner" hidden>
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
           <div>
-            Bạn đang chọn <strong>Tất cả công trình</strong>. Vui lòng chọn một công trình cụ thể trước khi điểm danh để tránh nhầm đội thợ.
-            <div style="margin-top:6px;">
-              <button class="link-btn" id="btnPickProjectForAtt" style="text-decoration:underline; font-weight:800;">👉 Bấm vào đây để chọn công trình</button>
-            </div>
+            Đang chọn <strong>Tất cả công trình</strong>. Vui lòng chọn một công trình cụ thể để điểm danh chính xác.
+            <button class="link-btn" id="btnPickProjectForAtt" style="text-decoration:underline; font-weight:700; display:block; margin-top:4px;">👉 Bấm vào đây để chọn công trình</button>
           </div>
         </div>
 
         <!-- Cảnh báo nếu công trình đã hoàn thành/đóng -->
-        <div class="notice-banner" id="attendanceClosedProjectBanner" hidden style="background:var(--bg-subtle); border-color:var(--border-card);">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
-          <div>
-            Công trình này đã <strong>hoàn thành / đóng sổ</strong>. Đang ở chế độ xem lại lịch sử (không cho sửa hoặc chấm công mới).
-          </div>
+        <div class="notice-banner subtle" id="attendanceClosedProjectBanner" hidden>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+          <div>Công trình này đã <strong>hoàn thành / đóng sổ</strong>. Đang ở chế độ xem lại lịch sử.</div>
         </div>
 
-        <!-- Thanh chuyển ngày chấm công -->
+        <!-- Thanh điều hướng ngày chấm công + Nút thêm thợ tinh tế -->
         <div class="date-navigator-card">
-          <button class="date-step-btn" id="btnPrevDay">‹ Hôm trước</button>
+          <button class="date-step-btn" id="btnPrevDay" aria-label="Ngày trước">‹ Trước</button>
           <div class="date-current-box">
             <input type="date" id="attendanceDateInput" class="date-native-picker" />
             <span class="date-human-tag" id="attendanceDateHuman">Hôm nay</span>
           </div>
-          <button class="date-step-btn" id="btnNextDay">Hôm sau ›</button>
+          <button class="date-step-btn" id="btnNextDay" aria-label="Ngày sau">Sau ›</button>
+          <button class="btn-subtle-add" id="btnOpenAddWorkerModal" title="Thêm thợ mới">+ Thêm thợ</button>
         </div>
 
         <!-- Dải tóm tắt công trong ngày -->
         <div class="attendance-summary-strip" id="attendanceSummaryStrip">
-          <span>🟢 Đủ: 0</span>
-          <span>🟡 Nửa: 0</span>
-          <span>🔵 TC: 0</span>
-          <span>🔴 Nghỉ: 0</span>
+          <span class="att-stat-chip full">🟢 Đủ: 0</span>
+          <span class="att-stat-chip half">🟡 Nửa: 0</span>
+          <span class="att-stat-chip ot">🔵 TC: 0</span>
+          <span class="att-stat-chip off">🔴 Nghỉ: 0</span>
         </div>
 
         <!-- Danh sách thợ chấm công 1 chạm -->
         <div class="worker-attendance-list" id="attendanceWorkerList"></div>
 
-        <!-- Khối nút hành động ở đáy vùng Chấm công -->
+        <!-- Nút hành động chính sticky ở đáy màn hình -->
         <div class="bottom-sticky-cta" id="attendanceStickyFooter">
           <button class="btn-god-mode" id="btnMarkAllFullDay">
             ⚡ Điểm danh cả đội (1.0 Công)
           </button>
-          <button class="btn-secondary-add" id="btnOpenAddWorkerModal">
-            + Thêm thợ
-          </button>
         </div>
       </section>
 
-      <!-- ================= TAB 3: SỔ TIỀN ================= -->
+      <!-- ================= TAB 3: SỔ TIỀN (TÁI CẤU TRÚC 5 PHÂN TẦNG) ================= -->
       <section class="tab-pane" id="tab-money">
-        <!-- 4 Phân mục con tinh gọn -->
-        <div class="subtab-pills" role="tablist">
-          <button class="subtab-pill active" data-subtab="advances">1. Tạm ứng</button>
-          <button class="subtab-pill" data-subtab="payroll">2. Bảng lương</button>
-          <button class="subtab-pill" data-subtab="materials">3. Vật tư</button>
-          <button class="subtab-pill" data-subtab="cashflow">4. Thu chi</button>
+        <!-- 5 Phân mục con phân tầng rõ ràng -->
+        <div class="subtab-pills-scroll" role="tablist">
+          <button class="subtab-pill active" data-subtab="total">1. Tổng quỹ</button>
+          <button class="subtab-pill" data-subtab="advances">2. Ứng thợ</button>
+          <button class="subtab-pill" data-subtab="payroll">3. Bảng lương</button>
+          <button class="subtab-pill" data-subtab="materials">4. Vật tư & nợ</button>
+          <button class="subtab-pill" data-subtab="cashflow">5. Thu chi khác</button>
         </div>
 
-        <!-- SUBTAB 3.1: TẠM ỨNG -->
-        <div class="subtab-content active" id="subtab-advances">
+        <!-- PHÂN TẦNG 3.1: TỔNG QUỸ TIỀN MẶT (UNIFIED CASH LEDGER STREAM) -->
+        <div class="subtab-content active" id="subtab-total">
+          <div class="ledger-summary-banner">
+            <div class="ledger-banner-row">
+              <span class="ledger-banner-label">TỒN QUỸ TIỀN MẶT CÔNG TRÌNH</span>
+              <strong class="ledger-banner-balance" id="subtabTotalBalance">45.200.000 đ</strong>
+            </div>
+            <div class="ledger-filter-chips">
+              <button class="chip active" data-ledger-filter="all">Tất cả</button>
+              <button class="chip" data-ledger-filter="in">Thu tiền (+)</button>
+              <button class="chip" data-ledger-filter="out">Chi tiền (-)</button>
+            </div>
+          </div>
+          <div class="card-list" id="unifiedLedgerList"></div>
+        </div>
+
+        <!-- PHÂN TẦNG 3.2: TẠM ỨNG THỢ (ADVANCES + S-PEN) -->
+        <div class="subtab-content" id="subtab-advances">
           <div class="subtab-top-action">
             <button class="btn-primary-full" id="btnOpenAdvanceSheet">
               ✍️ + Tạo Phiếu Ứng Tiền (Ký S-Pen)
@@ -203,21 +212,19 @@
           <div class="card-list" id="advancesHistoryList"></div>
         </div>
 
-        <!-- SUBTAB 3.2: BẢNG LƯƠNG -->
+        <!-- PHÂN TẦNG 3.3: BẢNG LƯƠNG QUYẾT TOÁN (PAYROLL) -->
         <div class="subtab-content" id="subtab-payroll">
-          <div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-card); padding:10px 14px; border-radius:12px; margin-bottom:12px; border:1px solid var(--border-subtle);">
-            <div style="font-size:13.5px; font-weight:700; color:var(--text-secondary);">
-              🗓️ Kỳ quyết toán lương:
-            </div>
-            <input type="month" id="payrollSettlementMonth" class="date-native-picker" style="font-weight:700; color:var(--brand-primary); font-size:14px; padding:6px 12px; border-radius:8px; border:1px solid var(--border-input); background:var(--bg-surface);" />
+          <div class="payroll-period-selector-row">
+            <span class="payroll-period-label">🗓️ Kỳ quyết toán lương:</span>
+            <input type="month" id="payrollSettlementMonth" class="date-native-picker" />
           </div>
           <div class="payroll-info-banner" id="payrollInfoBanner">
-            Thực lĩnh = Lương gộp − Tiền ứng trong kỳ − Tiền ứng dư kỳ trước (nếu có)
+            Thực lĩnh = Lương gộp − Tiền ứng trong kỳ − Ứng dư kỳ trước (nếu có)
           </div>
           <div class="card-list" id="payrollWorkerList"></div>
         </div>
 
-        <!-- SUBTAB 3.3: VẬT TƯ -->
+        <!-- PHÂN TẦNG 3.4: VẬT TƯ & CÔNG NỢ ĐẠI LÝ (MATERIALS & DEBT) -->
         <div class="subtab-content" id="subtab-materials">
           <div class="subtab-top-action">
             <button class="btn-primary-full" id="btnOpenMaterialSheet">
@@ -227,7 +234,7 @@
           <div class="card-list" id="materialsHistoryList"></div>
         </div>
 
-        <!-- SUBTAB 3.4: THU CHI TIỀN MẶT -->
+        <!-- PHÂN TẦNG 3.5: THU CHI TIỀN MẶT KHÁC (GENERAL CASHFLOW) -->
         <div class="subtab-content" id="subtab-cashflow">
           <div class="subtab-top-action two-cols">
             <button class="btn-primary-full" id="btnOpenCashInSheet">➕ Chủ nhà ứng tiền</button>
@@ -237,10 +244,13 @@
         </div>
       </section>
 
-      <!-- ================= TAB 4: CÔNG TRÌNH ================= -->
+      <!-- ================= TAB 4: CÔNG TRÌNH (2027 MODERN CARDS) ================= -->
       <section class="tab-pane" id="tab-projects">
         <div class="project-filter-row">
-          <input type="search" id="projectSearchInput" class="search-input" placeholder="🔍 Tìm tên công trình, chủ nhà, địa chỉ..." />
+          <div class="search-box-wrapper">
+            <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+            <input type="search" id="projectSearchInput" class="search-input" placeholder="Tìm tên công trình, chủ nhà, địa chỉ..." />
+          </div>
           <div class="filter-chips">
             <button class="chip active" data-pstatus="all">Tất cả</button>
             <button class="chip" data-pstatus="active">Đang làm</button>
@@ -589,6 +599,9 @@
           <option value="Thợ điện nước">Thợ điện nước</option>
           <option value="Thợ sơn nước">Thợ sơn nước</option>
         </select>
+
+        <label class="field-label">Ngày bắt đầu vào làm</label>
+        <input type="date" id="newWorkerJoinDate" class="form-input" />
 
         <label class="field-label">Mức lương 1 ngày công (VND)</label>
         <input type="number" id="newWorkerRate" class="form-input" value="450000" step="10000" />

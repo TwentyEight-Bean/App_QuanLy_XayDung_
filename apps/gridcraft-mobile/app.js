@@ -249,6 +249,8 @@ function createDefaultStore() {
         role: "Thợ cả (Thợ chính)",
         dailyRate: 500000,
         projectId: "PRJ_NINH_KIEU",
+        joinDate: "2025-01-01",
+        endWorkingDate: null,
         assignments: [{ projectId: "PRJ_NINH_KIEU", startDate: "2025-01-01", endDate: null }]
       },
       {
@@ -257,6 +259,8 @@ function createDefaultStore() {
         role: "Thợ xây chính",
         dailyRate: 450000,
         projectId: "PRJ_NINH_KIEU",
+        joinDate: "2025-01-01",
+        endWorkingDate: null,
         assignments: [{ projectId: "PRJ_NINH_KIEU", startDate: "2025-01-01", endDate: null }]
       },
       {
@@ -265,6 +269,8 @@ function createDefaultStore() {
         role: "Thợ sắt / Cốt pha",
         dailyRate: 450000,
         projectId: "PRJ_NINH_KIEU",
+        joinDate: "2025-01-01",
+        endWorkingDate: null,
         assignments: [{ projectId: "PRJ_NINH_KIEU", startDate: "2025-01-01", endDate: null }]
       },
       {
@@ -273,6 +279,8 @@ function createDefaultStore() {
         role: "Thợ hồ phụ",
         dailyRate: 330000,
         projectId: "PRJ_NINH_KIEU",
+        joinDate: "2025-01-01",
+        endWorkingDate: null,
         assignments: [{ projectId: "PRJ_NINH_KIEU", startDate: "2025-01-01", endDate: null }]
       },
       {
@@ -281,6 +289,8 @@ function createDefaultStore() {
         role: "Thợ điện nước",
         dailyRate: 480000,
         projectId: "PRJ_CAI_RANG",
+        joinDate: "2025-01-01",
+        endWorkingDate: null,
         assignments: [{ projectId: "PRJ_CAI_RANG", startDate: "2025-01-01", endDate: null }]
       },
       {
@@ -289,6 +299,8 @@ function createDefaultStore() {
         role: "Thợ hồ phụ",
         dailyRate: 340000,
         projectId: "PRJ_CAI_RANG",
+        joinDate: "2025-01-01",
+        endWorkingDate: null,
         assignments: [{ projectId: "PRJ_CAI_RANG", startDate: "2025-01-01", endDate: null }]
       }
     ],
@@ -424,20 +436,24 @@ function migrateStore(rawStore) {
   if (!d.settings) d.settings = {};
   d.settings.payrollPeriod = d.settings.payrollPeriod || d.settings.selectedMonth || getTodayVN().slice(0, 7);
 
-  // 2. Bảo toàn lịch sử phân công thợ (assignments)
+  // 2. Bảo toàn lịch sử phân công thợ (assignments) & ngày vào làm (joinDate / endWorkingDate)
   d.workers = d.workers.map(w => {
     let assignments = Array.isArray(w.assignments) ? [...w.assignments] : [];
     if (assignments.length === 0 && w.projectId) {
       assignments = [
         {
           projectId: w.projectId,
-          startDate: "2025-01-01",
-          endDate: null
+          startDate: w.joinDate || "2025-01-01",
+          endDate: w.endWorkingDate || null
         }
       ];
     }
+    const joinDate = w.joinDate || w.startWorkingDate || (assignments[0]?.startDate) || "2025-01-01";
+    const endWorkingDate = w.endWorkingDate || w.leaveDate || null;
     return {
       ...w,
+      joinDate,
+      endWorkingDate,
       assignments
     };
   });
@@ -744,23 +760,56 @@ function matchesProject(itemProjectId) {
   return sel === "ALL" || itemProjectId === sel;
 }
 
-// ================= KIỂM TRA THỢ THUỘC CÔNG TRÌNH THEO THỜI GIAN =================
+// ================= KIỂM TRA THỢ THUỘC CÔNG TRÌNH & ĐIỀU KIỆN NGÀY LÀM VIỆC =================
+function isWorkerEligibleForDate(worker, dateStr) {
+  if (!worker || !dateStr) return false;
+  // Ngày vào làm (joinDate / startWorkingDate)
+  const join = worker.joinDate || worker.startWorkingDate || (worker.assignments && worker.assignments[0]?.startDate) || null;
+  if (join && dateStr < join) {
+    return false;
+  }
+  // Ngày nghỉ việc (endWorkingDate / leaveDate)
+  const leave = worker.endWorkingDate || worker.leaveDate || null;
+  if (leave && dateStr > leave) {
+    return false;
+  }
+  return true;
+}
+
 // Đảm bảo khi thợ chuyển công trình, dữ liệu cũ tại công trình cũ vẫn tra cứu được đầy đủ
+// Và khi xem ngày cụ thể, thợ chưa vào làm hoặc đã nghỉ việc không bị hiển thị ngược
 function isWorkerActiveInProject(worker, targetProjectId, periodOrDate = null) {
   if (!worker) return false;
-  if (!targetProjectId || targetProjectId === "ALL") return true;
 
   const period = periodOrDate || store.settings.payrollPeriod || store.settings.selectedMonth || "";
+  const isSpecificDate = period.length === 10;
   const periodMonth = period.slice(0, 7);
+
+  // Nếu đang lọc theo ngày cụ thể (YYYY-MM-DD): bắt buộc kiểm tra điều kiện vào làm / nghỉ việc
+  if (isSpecificDate && !isWorkerEligibleForDate(worker, period)) {
+    return false;
+  }
+
+  // Nếu xem theo tháng (YYYY-MM): kiểm tra xem thợ có làm việc trong tháng này không
+  if (period.length === 7) {
+    const pStart = period + "-01";
+    const pEnd = period + "-31";
+    const join = worker.joinDate || worker.startWorkingDate || (worker.assignments && worker.assignments[0]?.startDate) || null;
+    if (join && join > pEnd) return false;
+    const leave = worker.endWorkingDate || worker.leaveDate || null;
+    if (leave && leave < pStart) return false;
+  }
+
+  if (!targetProjectId || targetProjectId === "ALL") return true;
 
   // 1. Kiểm tra xem thợ có phát sinh dữ liệu thực tế tại targetProjectId trong kỳ/ngày này không
   const hasAttendance = store.attendance.some(a =>
-    a.workerId === worker.id && a.projectId === targetProjectId && (!periodMonth || a.date.startsWith(periodMonth))
+    a.workerId === worker.id && a.projectId === targetProjectId && (isSpecificDate ? a.date === period : (!periodMonth || a.date.startsWith(periodMonth)))
   );
   if (hasAttendance) return true;
 
   const hasAdvance = store.advances.some(a =>
-    a.workerId === worker.id && a.projectId === targetProjectId && (!periodMonth || a.date.startsWith(periodMonth))
+    a.workerId === worker.id && a.projectId === targetProjectId && (isSpecificDate ? a.date === period : (!periodMonth || a.date.startsWith(periodMonth)))
   );
   if (hasAdvance) return true;
 
@@ -782,8 +831,11 @@ function isWorkerActiveInProject(worker, targetProjectId, periodOrDate = null) {
     });
   }
 
-  // 3. Fallback: nếu chưa có assignments và không có period lọc, so sánh worker.projectId
-  if (!period) return worker.projectId === targetProjectId;
+  // 3. Fallback: nếu worker chưa có assignments
+  const workerProj = worker.projectId || worker.currentProjectId;
+  if (workerProj === targetProjectId) {
+    return true;
+  }
   return false;
 }
 
@@ -1201,65 +1253,116 @@ function renderOverviewTab() {
   const fin = calculateFinancials();
   const hide = store.settings.hideBalance;
 
-  document.getElementById("privacyEyeIcon").textContent = hide ? "🙈 Đang ẩn" : "👁️ Ẩn số tiền";
-  document.getElementById("heroCashBalance").textContent = hide
-    ? "••••••••• đ"
-    : formatVND(fin.cumulativeBalance);
+  const privacyIcon = document.getElementById("privacyEyeIcon");
+  if (privacyIcon) privacyIcon.textContent = hide ? "🙈 Đang ẩn" : "👁️ Ẩn";
 
-  document.getElementById("heroPillIn").textContent = hide
-    ? "Thu: ••••••••"
-    : `Thu +${formatVND(fin.periodCashIn)}`;
-  document.getElementById("heroPillOut").textContent = hide
-    ? "Chi: ••••••••"
-    : `Chi -${formatVND(fin.periodCashOut)}`;
+  const heroBalance = document.getElementById("heroCashBalance");
+  if (heroBalance) {
+    heroBalance.textContent = hide ? "••••••••• đ" : formatVND(fin.cumulativeBalance);
+  }
+
+  const pillIn = document.getElementById("heroPillIn");
+  if (pillIn) pillIn.textContent = hide ? "↑ Thu: ••••••••" : `↑ Thu +${formatVND(fin.periodCashIn)}`;
+
+  const pillOut = document.getElementById("heroPillOut");
+  if (pillOut) pillOut.textContent = hide ? "↓ Chi: ••••••••" : `↓ Chi -${formatVND(fin.periodCashOut)}`;
 
   const selProj = store.settings.selectedProjectId;
   const selMo = store.settings.selectedMonth;
   const activeWorkers = store.workers.filter(w => isWorkerActiveInProject(w, selProj, selMo)).length;
-  document.getElementById("kpiTotalAttendance").textContent = `${fin.periodAttendanceUnits} công`;
-  document.getElementById("kpiWorkerCount").textContent = `${activeWorkers} thợ đang phụ trách`;
 
-  document.getElementById("kpiAdvancesAndDebt").textContent = hide
-    ? "•••••••• đ"
-    : formatVND(fin.periodAdvanceTotal + fin.openMaterialDebt);
-  document.getElementById("kpiDebtDetail").textContent =
-    `Ứng: ${(fin.periodAdvanceTotal / 1e6).toFixed(1)}tr • Nợ VT: ${(fin.openMaterialDebt / 1e6).toFixed(1)}tr`;
+  const totalAttEl = document.getElementById("kpiTotalAttendance");
+  if (totalAttEl) totalAttEl.textContent = `${fin.periodAttendanceUnits} công`;
+
+  const workerCountEl = document.getElementById("kpiWorkerCount");
+  if (workerCountEl) workerCountEl.textContent = `${activeWorkers} thợ`;
+
+  const advDebtEl = document.getElementById("kpiAdvancesAndDebt");
+  if (advDebtEl) {
+    advDebtEl.textContent = hide ? "•••••••• đ" : formatVND(fin.periodAdvanceTotal + fin.openMaterialDebt);
+  }
+
+  const debtDetailEl = document.getElementById("kpiDebtDetail");
+  if (debtDetailEl) {
+    debtDetailEl.textContent = `Ứng ${(fin.periodAdvanceTotal / 1e6).toFixed(1)}tr • Nợ ${(fin.openMaterialDebt / 1e6).toFixed(1)}tr:`;
+  }
+
+  // Cập nhật trạng thái điểm danh hôm nay cho nút quick action
+  const today = getTodayVN();
+  const eligibleToday = store.workers.filter(w => isWorkerActiveInProject(w, selProj, today) && isWorkerEligibleForDate(w, today));
+  const markedToday = store.attendance.filter(a => matchesProject(a.projectId) && a.date === today && a.units !== null);
+  const quickAttEl = document.getElementById("quickAttStatus");
+  if (quickAttEl) {
+    if (eligibleToday.length === 0) {
+      quickAttEl.textContent = "Chưa có thợ";
+    } else if (markedToday.length >= eligibleToday.length) {
+      quickAttEl.textContent = `Đã chấm đủ ${markedToday.length}/${eligibleToday.length}`;
+    } else {
+      quickAttEl.textContent = `Mới chấm ${markedToday.length}/${eligibleToday.length}`;
+    }
+  }
 
   // Nhắc việc thông minh
   const unsignedList = store.advances.filter(a => matchesProject(a.projectId) && a.signedStatus === "unsigned");
+  const unpaidMaterials = store.materials.filter(m => {
+    if (!matchesProject(m.projectId)) return false;
+    const total = Number(m.totalAmount || (m.qty * m.unitPrice) || 0);
+    const paid = (m.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+    return total - paid > 0;
+  });
+
   const alertsEl = document.getElementById("overviewAlerts");
-  alertsEl.innerHTML = "";
-  if (unsignedList.length > 0) {
-    alertsEl.innerHTML = `
-      <div class="notice-banner">
-        <span>⚠️</span>
-        <div>
-          Có <strong>${unsignedList.length} phiếu ứng tiền chưa ký nhận</strong>.
-          Vào mục Sổ tiền để đưa máy cho thợ ký bổ sung bằng S-Pen.
+  if (alertsEl) {
+    let alertHtml = "";
+    if (unsignedList.length > 0) {
+      alertHtml += `
+        <div class="notice-banner alert-banner amber">
+          <span class="alert-icon">✍️</span>
+          <div class="alert-body">
+            <strong>Có ${unsignedList.length} phiếu ứng tiền chưa ký nhận S-Pen</strong>
+            <p>Vào mục Sổ tiền để đưa máy cho thợ ký bổ sung bằng bút S-Pen.</p>
+          </div>
         </div>
-      </div>
-    `;
+      `;
+    }
+    if (unpaidMaterials.length > 0) {
+      alertHtml += `
+        <div class="notice-banner alert-banner blue">
+          <span class="alert-icon">🧱</span>
+          <div class="alert-body">
+            <strong>${unpaidMaterials.length} khoản mua vật tư còn nợ đại lý</strong>
+            <p>Kiểm tra mục Vật tư & Nợ để theo dõi tiến độ thanh toán.</p>
+          </div>
+        </div>
+      `;
+    }
+    alertsEl.innerHTML = alertHtml;
   }
 
   // Danh sách tóm tắt công trình
   const listEl = document.getElementById("overviewProjectList");
-  listEl.innerHTML = store.projects.map(p => {
-    const wCount = store.workers.filter(w => isWorkerActiveInProject(w, p.id, selMo)).length;
-    const isSel = store.settings.selectedProjectId === p.id;
-    return `
-      <div class="item-card" onclick="selectProject('${p.id}')" style="cursor:pointer; ${isSel ? 'border-color: var(--brand-primary); border-width: 1.5px;' : ''}">
-        <div class="item-card-row">
-          <div>
-            <div class="item-title">${escapeHTML(p.name)}</div>
-            <div class="item-sub">📍 ${escapeHTML(p.location)} • 👤 Chủ: ${escapeHTML(p.owner)} • 👷 ${wCount} thợ</div>
+  if (listEl) {
+    listEl.innerHTML = store.projects.map(p => {
+      const wCount = store.workers.filter(w => isWorkerActiveInProject(w, p.id, selMo)).length;
+      const isSel = store.settings.selectedProjectId === p.id;
+      const loc = p.location ? `📍 ${escapeHTML(p.location)}` : "";
+      const own = p.owner ? `👤 ${escapeHTML(p.owner)}` : "";
+      const metaStr = [loc, own, `👷 ${wCount} thợ`].filter(Boolean).join(" • ");
+      return `
+        <div class="item-card project-overview-card" onclick="selectProject('${p.id}')" style="cursor:pointer; ${isSel ? 'border-color: var(--brand-primary); border-width: 1.5px;' : ''}">
+          <div class="item-card-row">
+            <div>
+              <div class="item-title">${escapeHTML(p.name)}</div>
+              <div class="item-sub">${metaStr}</div>
+            </div>
+            <span class="badge ${p.status === 'active' ? 'badge-green' : 'badge-amber'}">
+              ${p.status === 'active' ? (isSel ? '★ Đang xem' : 'Đang làm') : 'Đã xong'}
+            </span>
           </div>
-          <span class="badge ${p.status === 'active' ? 'badge-green' : 'badge-amber'}">
-            ${p.status === 'active' ? 'Đang làm' : 'Đã xong'}
-          </span>
         </div>
-      </div>
-    `;
-  }).join("");
+      `;
+    }).join("");
+  }
 }
 
 function renderAttendanceTab() {
@@ -1271,18 +1374,22 @@ function renderAttendanceTab() {
   const closedBanner = document.getElementById("attendanceClosedProjectBanner");
   const stickyFooter = document.getElementById("attendanceStickyFooter");
 
-  allBanner.hidden = !isAll;
-  closedBanner.hidden = isAll || !isCompleted;
-  stickyFooter.style.display = (isAll || isCompleted) ? "none" : "flex";
+  if (allBanner) allBanner.hidden = !isAll;
+  if (closedBanner) closedBanner.hidden = isAll || !isCompleted;
+  if (stickyFooter) stickyFooter.style.display = (isAll || isCompleted) ? "none" : "flex";
 
   const dateStr = store.settings.selectedDate;
-  document.getElementById("attendanceDateInput").value = dateStr;
+  const dateInput = document.getElementById("attendanceDateInput");
+  if (dateInput) dateInput.value = dateStr;
   const todayStr = getTodayVN();
-  document.getElementById("attendanceDateHuman").textContent =
-    dateStr === todayStr ? "Hôm nay" : `Ngày ${dateStr.split("-").reverse().join("/")}`;
+  const humanTag = document.getElementById("attendanceDateHuman");
+  if (humanTag) {
+    humanTag.textContent = dateStr === todayStr ? "Hôm nay" : `Ngày ${dateStr.split("-").reverse().join("/")}`;
+  }
 
   const targetProjId = store.settings.selectedProjectId;
-  const workers = store.workers.filter(w => isWorkerActiveInProject(w, targetProjId, dateStr));
+  // Lọc chỉ các thợ đủ điều kiện ngày làm việc (joinDate <= dateStr và !endWorkingDate || endWorkingDate >= dateStr)
+  const workers = store.workers.filter(w => isWorkerActiveInProject(w, targetProjId, dateStr) && isWorkerEligibleForDate(w, dateStr));
   let count1 = 0, count05 = 0, count15 = 0, count0 = 0, countUnset = 0;
 
   const listHtml = workers.map(w => {
@@ -1299,16 +1406,23 @@ function renderAttendanceTab() {
     const rateShown = rec ? rec.rateSnapshot : w.dailyRate;
     const initial = escapeHTML(w.name.split(" ").slice(-1)[0]?.slice(0, 2).toUpperCase() || "TH");
 
+    // Hiển thị badge ngày vào làm nếu là thợ mới
+    const isNewJoin = w.joinDate && w.joinDate >= "2026-10-01" && w.joinDate <= dateStr;
+    const joinBadge = isNewJoin ? `<span class="worker-badge-joined">Vào làm: ${w.joinDate.split("-").reverse().join("/")}</span>` : "";
+
     return `
-      <div class="worker-att-card">
+      <div class="worker-att-card" data-worker-id="${w.id}">
         <div class="worker-att-top">
           <div class="worker-avatar">${initial}</div>
           <div class="worker-meta">
-            <div class="worker-name">${escapeHTML(w.name)}</div>
+            <div class="worker-name-row">
+              <span class="worker-name">${escapeHTML(w.name)}</span>
+              ${joinBadge}
+            </div>
             <div class="worker-role-rate">${escapeHTML(w.role)} • ${formatVND(rateShown)}/công</div>
           </div>
-          <span class="badge ${val === null ? 'badge-amber' : 'badge-green'}">
-            ${val === null ? 'Chưa ghi' : val + ' công'}
+          <span class="badge ${val === null ? 'badge-amber' : (val === 0 ? 'badge-red' : 'badge-green')}">
+            ${val === null ? 'Chưa ghi' : (val === 0 ? 'Nghỉ' : val + ' công')}
           </span>
         </div>
         <div class="att-pills-group">
@@ -1333,16 +1447,24 @@ function renderAttendanceTab() {
     `;
   }).join("");
 
-  document.getElementById("attendanceWorkerList").innerHTML =
-    listHtml || `<div class="item-card" style="text-align:center; padding:24px; color:var(--text-muted);">Chưa có thợ nào trong công trình này. Bấm "+ Thêm thợ" để bổ sung.</div>`;
+  const listEl = document.getElementById("attendanceWorkerList");
+  if (listEl) {
+    listEl.innerHTML = listHtml || `<div class="empty-state-card">
+      <div class="empty-icon">👷</div>
+      <div class="empty-text">Chưa có thợ nào trong ngày này.<br/><small>Bấm "+ Thêm thợ" ở trên để bổ sung vào đội.</small></div>
+    </div>`;
+  }
 
-  document.getElementById("attendanceSummaryStrip").innerHTML = `
-    <span>🟢 Đủ: ${count1}</span>
-    <span>🟡 Nửa: ${count05}</span>
-    <span>🔵 TC: ${count15}</span>
-    <span>🔴 Nghỉ: ${count0}</span>
-    ${countUnset > 0 ? `<span style="color:var(--amber-warn);">⚠️ Chưa chấm: ${countUnset}</span>` : ""}
-  `;
+  const stripEl = document.getElementById("attendanceSummaryStrip");
+  if (stripEl) {
+    stripEl.innerHTML = `
+      <span class="att-stat-chip full">🟢 Đủ: ${count1}</span>
+      <span class="att-stat-chip half">🟡 Nửa: ${count05}</span>
+      <span class="att-stat-chip ot">🔵 TC: ${count15}</span>
+      <span class="att-stat-chip off">🔴 Nghỉ: ${count0}</span>
+      ${countUnset > 0 ? `<span class="att-stat-chip unset">⚠️ Chưa chấm: ${countUnset}</span>` : ""}
+    `;
+  }
 }
 
 // Chấm công 1 chạm cho từng thợ (Lưu rateSnapshot bất biến)
@@ -1359,6 +1481,11 @@ window.setWorkerAttendance = function(workerId, units) {
   }
 
   const dateStr = store.settings.selectedDate;
+  if (!isWorkerEligibleForDate(w, dateStr)) {
+    showToast("Thợ chưa vào làm hoặc đã nghỉ việc tại ngày này!");
+    return;
+  }
+
   const existingIdx = store.attendance.findIndex(
     a => a.projectId === targetProjId && a.workerId === w.id && a.date === dateStr
   );
@@ -1395,9 +1522,10 @@ document.getElementById("btnMarkAllFullDay").addEventListener("click", () => {
   }
 
   const dateStr = store.settings.selectedDate;
-  const workers = store.workers.filter(w => isWorkerActiveInProject(w, prjId, dateStr));
+  // Chỉ điểm danh các thợ đủ điều kiện ngày làm việc (joinDate <= dateStr và !endWorkingDate || endWorkingDate >= dateStr)
+  const workers = store.workers.filter(w => isWorkerActiveInProject(w, prjId, dateStr) && isWorkerEligibleForDate(w, dateStr));
   if (workers.length === 0) {
-    showToast("Chưa có thợ trong công trình này!");
+    showToast("Chưa có thợ đủ điều kiện làm việc trong ngày này!");
     return;
   }
 
@@ -1460,41 +1588,130 @@ document.getElementById("btnUndoAction").addEventListener("click", () => {
   document.getElementById("undoSnackbar").hidden = true;
 });
 
-// ================= SỔ TIỀN (4 PHÂN MỤC) =================
+// ================= SỔ TIỀN (TÁI CẤU TRÚC 5 PHÂN TẦNG) =================
+let currentLedgerFilter = "all";
+
+function renderUnifiedLedgerSubtab() {
+  const bannerBalance = document.getElementById("subtabTotalBalance");
+  const listEl = document.getElementById("unifiedLedgerList");
+  if (!listEl) return;
+
+  const fin = calculateFinancials();
+  const hide = store.settings.hideBalance;
+  if (bannerBalance) {
+    bannerBalance.textContent = hide ? "••••••••• đ" : formatVND(fin.cumulativeBalance);
+  }
+
+  const fullLedger = getUnifiedCashLedger(store.settings.selectedProjectId);
+  let periodLedger = fullLedger.filter(item => isInSelectedPeriod(item.date));
+
+  if (currentLedgerFilter === "in") {
+    periodLedger = periodLedger.filter(item => item.amountIn > 0);
+  } else if (currentLedgerFilter === "out") {
+    periodLedger = periodLedger.filter(item => item.amountOut > 0);
+  }
+
+  // Sắp xếp ngày mới nhất lên đầu
+  periodLedger.sort((a, b) => (b.date > a.date ? 1 : (b.date < a.date ? -1 : 0)));
+
+  listEl.innerHTML = periodLedger.map(item => {
+    const isIn = item.amountIn > 0;
+    const amountVal = isIn ? item.amountIn : item.amountOut;
+
+    let badgeClass = "badge-blue";
+    let icon = "📄";
+    let categoryColor = "var(--text-primary)";
+
+    if (item.source === "Sổ thu chi") {
+      if (isIn) {
+        badgeClass = "badge-green";
+        icon = "💰";
+        categoryColor = "var(--brand-primary)";
+      } else {
+        badgeClass = "badge-blue";
+        icon = "🛒";
+        categoryColor = "var(--text-primary)";
+      }
+    } else if (item.source === "Tạm ứng thợ") {
+      badgeClass = "badge-amber";
+      icon = "✍️";
+      categoryColor = "var(--amber-warn)";
+    } else if (item.source === "Lương thợ") {
+      badgeClass = "badge-red";
+      icon = "👷";
+      categoryColor = "var(--danger-debt)";
+    } else if (item.source === "Vật tư") {
+      badgeClass = "badge-ochre";
+      icon = "🧱";
+      categoryColor = "#B45309";
+    }
+
+    return `
+      <div class="item-card ledger-item-card">
+        <div class="item-card-row">
+          <div class="ledger-item-left">
+            <div class="ledger-title-line">
+              <span class="ledger-icon">${icon}</span>
+              <strong class="item-title" style="color:${categoryColor};">${escapeHTML(item.category)}</strong>
+              <span class="badge ${badgeClass}">${escapeHTML(item.source)}</span>
+            </div>
+            <div class="item-sub">
+              ${item.partner ? `<strong>${escapeHTML(item.partner)}</strong> • ` : ""}
+              <span>📅 ${item.date}</span> • 
+              <span>🏗️ ${escapeHTML(item.projectName)}</span>
+            </div>
+          </div>
+          <div class="ledger-item-right">
+            <strong class="ledger-amount ${isIn ? 'amount-in' : 'amount-out'}">
+              ${isIn ? '+' : '-'}${formatVND(amountVal)}
+            </strong>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join("") || `<div class="empty-state-card"><div class="empty-icon">📊</div><div class="empty-text">Không có giao dịch dòng tiền trong kỳ này.</div></div>`;
+}
+
 function renderMoneyTab() {
-  // 1. Tạm ứng
+  // 1. Phân tầng Tổng quỹ (Ledger stream)
+  renderUnifiedLedgerSubtab();
+
+  // 2. Phân tầng Tạm ứng thợ
   const advList = store.advances
     .filter(a => matchesProject(a.projectId) && isInSelectedPeriod(a.date))
     .slice()
     .reverse();
 
-  document.getElementById("advancesHistoryList").innerHTML = advList.map(a => {
-    const w = store.workers.find(x => x.id === a.workerId);
-    const prj = store.projects.find(p => p.id === a.projectId);
-    return `
-      <div class="item-card">
-        <div class="item-card-row">
-          <div>
-            <div class="item-title">${escapeHTML(w ? w.name : 'Thợ')} — <span style="color:var(--amber-warn); font-weight:800;">${formatVND(a.amountVnd)}</span></div>
-            <div class="item-sub">🏗️ ${escapeHTML(prj ? prj.name : '')} • 📅 ${a.date} • ${escapeHTML(a.note || 'Tạm ứng')}</div>
+  const advListEl = document.getElementById("advancesHistoryList");
+  if (advListEl) {
+    advListEl.innerHTML = advList.map(a => {
+      const w = store.workers.find(x => x.id === a.workerId);
+      const prj = store.projects.find(p => p.id === a.projectId);
+      return `
+        <div class="item-card">
+          <div class="item-card-row">
+            <div>
+              <div class="item-title">${escapeHTML(w ? w.name : 'Thợ')} — <span style="color:var(--amber-warn); font-weight:800;">${formatVND(a.amountVnd)}</span></div>
+              <div class="item-sub">🏗️ ${escapeHTML(prj ? prj.name : '')} • 📅 ${a.date} • ${escapeHTML(a.note || 'Tạm ứng')}</div>
+            </div>
+            <span class="badge ${a.signedStatus === 'signed' ? 'badge-green' : 'badge-amber'}">
+              ${a.signedStatus === 'signed' ? '✍️ Đã ký S-Pen' : '⚠️ Chưa ký'}
+            </span>
           </div>
-          <span class="badge ${a.signedStatus === 'signed' ? 'badge-green' : 'badge-amber'}">
-            ${a.signedStatus === 'signed' ? '✍️ Đã ký S-Pen' : '⚠️ Chưa ký'}
-          </span>
+          ${a.signedStatus === 'unsigned' ? `
+            <div style="margin-top:8px;">
+              <button class="btn-sign-supplement" onclick="openSupplementalSign('${a.id}')">
+                ✍️ Đưa S-Pen ký bổ sung ngay
+              </button>
+            </div>
+          ` : ''}
+          ${a.signatureDataUrl ? `<div style="margin-top:8px;"><img src="${a.signatureDataUrl}" alt="Chữ ký thợ" style="height:44px; border:1px solid var(--border-card); border-radius:6px; background:#FFF; padding:2px;" /></div>` : ''}
         </div>
-        ${a.signedStatus === 'unsigned' ? `
-          <div style="margin-top:8px;">
-            <button class="btn-sign-supplement" onclick="openSupplementalSign('${a.id}')">
-              ✍️ Đưa S-Pen ký bổ sung ngay
-            </button>
-          </div>
-        ` : ''}
-        ${a.signatureDataUrl ? `<div style="margin-top:8px;"><img src="${a.signatureDataUrl}" alt="Chữ ký thợ" style="height:44px; border:1px solid var(--border-card); border-radius:6px; background:#FFF; padding:2px;" /></div>` : ''}
-      </div>
-    `;
-  }).join("") || `<div class="item-card" style="text-align:center; padding:20px; color:var(--text-muted);">Chưa có phiếu tạm ứng nào trong kỳ này.</div>`;
+      `;
+    }).join("") || `<div class="empty-state-card"><div class="empty-icon">✍️</div><div class="empty-text">Chưa có phiếu tạm ứng nào trong kỳ này.</div></div>`;
+  }
 
-  // 2. Bảng lương tự động theo kỳ quyết toán ổn định (tách khỏi bộ lọc xem báo cáo)
+  // 3. Phân tầng Bảng lương tự động
   const settlementMonthInput = document.getElementById("payrollSettlementMonth");
   const targetPeriod = store.settings.payrollPeriod || store.settings.selectedMonth || getTodayVN().slice(0, 7);
   if (settlementMonthInput) {
@@ -1508,101 +1725,108 @@ function renderMoneyTab() {
 
   const targetProjId = store.settings.selectedProjectId;
   const workers = store.workers.filter(w => isWorkerActiveInProject(w, targetProjId, targetPeriod));
-  document.getElementById("payrollWorkerList").innerHTML = workers.map(w => {
-    const effProjId = targetProjId === "ALL" ? w.projectId : targetProjId;
-    const prj = store.projects.find(p => p.id === effProjId);
-    const payroll = calculateWorkerPayrollForPeriod(w.id, effProjId, targetPeriod);
-    if (!payroll) return "";
+  const payrollListEl = document.getElementById("payrollWorkerList");
+  if (payrollListEl) {
+    payrollListEl.innerHTML = workers.map(w => {
+      const effProjId = targetProjId === "ALL" ? w.projectId : targetProjId;
+      const prj = store.projects.find(p => p.id === effProjId);
+      const payroll = calculateWorkerPayrollForPeriod(w.id, effProjId, targetPeriod);
+      if (!payroll) return "";
 
-    const { totalUnits, grossWage, periodAdvance, carryForwardIn, advanceDeducted, netPayable, closingSurplus, isPaid, wagePayment } = payroll;
-    const isLegacyAudit = isPaid && wagePayment && (wagePayment.requiresHistoricalReconciliation || wagePayment.isLegacyMigration);
+      const { totalUnits, grossWage, periodAdvance, carryForwardIn, advanceDeducted, netPayable, closingSurplus, isPaid, wagePayment } = payroll;
+      const isLegacyAudit = isPaid && wagePayment && (wagePayment.requiresHistoricalReconciliation || wagePayment.isLegacyMigration);
 
-    return `
-      <div class="item-card">
-        <div class="item-card-row">
-          <div>
-            <div class="item-title">${escapeHTML(w.name)}</div>
-            <div class="item-sub">🏗️ ${escapeHTML(prj ? prj.name : '')} • ${escapeHTML(w.role)} • <strong>${totalUnits} công</strong> (${formatVND(w.dailyRate)}/công)</div>
+      return `
+        <div class="item-card">
+          <div class="item-card-row">
+            <div>
+              <div class="item-title">${escapeHTML(w.name)}</div>
+              <div class="item-sub">🏗️ ${escapeHTML(prj ? prj.name : '')} • ${escapeHTML(w.role)} • <strong>${totalUnits} công</strong> (${formatVND(w.dailyRate)}/công)</div>
+            </div>
+            <span class="badge ${isPaid ? (isLegacyAudit ? 'badge-amber' : 'badge-green') : (closingSurplus > 0 && netPayable === 0 ? 'badge-red' : 'badge-blue')}">
+              ${isPaid ? (isLegacyAudit ? '⚠️ Đã trả (Cần đối soát)' : '✅ Đã chi trả') : (closingSurplus > 0 && netPayable === 0 ? 'Dư ứng sang kỳ sau' : 'Chờ tất toán')}
+            </span>
           </div>
-          <span class="badge ${isPaid ? (isLegacyAudit ? 'badge-amber' : 'badge-green') : (closingSurplus > 0 && netPayable === 0 ? 'badge-red' : 'badge-blue')}">
-            ${isPaid ? (isLegacyAudit ? '⚠️ Đã trả (Cần đối soát)' : '✅ Đã chi trả') : (closingSurplus > 0 && netPayable === 0 ? 'Dư ứng sang kỳ sau' : 'Chờ tất toán')}
-          </span>
+          <div style="margin: 10px 0; font-size:13.5px; display:flex; flex-direction:column; gap:4px; color:var(--text-secondary);">
+            <div style="display:flex; justify-content:space-between;">
+              <span>Lương gộp: <strong>${formatVND(grossWage)}</strong></span>
+              <span>Ứng trong kỳ: <strong style="color:var(--amber-warn);">-${formatVND(periodAdvance)}</strong></span>
+            </div>
+            ${carryForwardIn > 0 ? `
+              <div style="display:flex; justify-content:space-between; font-size:12.5px; color:var(--danger-debt); background:var(--amber-soft); padding:3px 8px; border-radius:6px;">
+                <span>Số dư ứng kỳ trước chuyển sang:</span>
+                <strong>-${formatVND(carryForwardIn)}</strong>
+              </div>
+            ` : ''}
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px dashed var(--border-subtle);">
+            <div>
+              <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">
+                ${netPayable > 0 || isPaid ? 'Thực lĩnh' : 'Dư ứng khấu trừ kỳ sau'}
+              </div>
+              <div style="font-size:20px; font-weight:800; color:${isPaid ? (isLegacyAudit ? 'var(--amber-warn)' : 'var(--brand-primary)') : (netPayable > 0 ? 'var(--brand-primary)' : 'var(--danger-debt)')}; font-variant-numeric:tabular-nums;">
+                ${isPaid 
+                  ? (isLegacyAudit ? 'Đã trả (Lịch sử)' : formatVND(wagePayment.netPaid)) 
+                  : (netPayable > 0 ? formatVND(netPayable) : 'Âm ' + formatVND(closingSurplus))}
+              </div>
+              ${isPaid ? (isLegacyAudit
+                ? `<small style="color:var(--amber-warn); font-size:11.5px; font-weight:600;">(Di chuyển từ V1: Cần đối soát số tiền thực chi)</small>`
+                : `<small style="color:var(--brand-primary); font-size:11.5px; font-weight:600;">(Đã chi ngày ${wagePayment.paidDate})</small>`
+              ) : ''}
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button class="date-step-btn" onclick="openVisualPayslip('${w.id}', '${effProjId}')">📤 Phiếu Zalo</button>
+              ${!isPaid && netPayable > 0 ? `<button class="date-step-btn" style="background:var(--brand-primary); color:#FFF; border:none;" onclick="openWagePaymentSheet('${w.id}', '${effProjId}')">Chốt trả</button>` : ''}
+            </div>
+          </div>
         </div>
-        <div style="margin: 10px 0; font-size:13.5px; display:flex; flex-direction:column; gap:4px; color:var(--text-secondary);">
-          <div style="display:flex; justify-content:space-between;">
-            <span>Lương gộp: <strong>${formatVND(grossWage)}</strong></span>
-            <span>Ứng trong kỳ: <strong style="color:var(--amber-warn);">-${formatVND(periodAdvance)}</strong></span>
+      `;
+    }).join("") || `<div class="empty-state-card"><div class="empty-icon">👷</div><div class="empty-text">Không có thợ trong công trình này.</div></div>`;
+  }
+
+  // 4. Phân tầng Vật tư & Nợ đại lý
+  const mats = store.materials.filter(m => matchesProject(m.projectId));
+  const matListEl = document.getElementById("materialsHistoryList");
+  if (matListEl) {
+    matListEl.innerHTML = mats.map(m => {
+      const prj = store.projects.find(p => p.id === m.projectId);
+      const totalCost = Number(m.totalAmount || (m.qty * m.unitPrice) || 0);
+      const paidSum = (m.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+      const remaining = Math.max(0, totalCost - paidSum);
+      const isFullyPaid = remaining <= 0;
+
+      return `
+        <div class="item-card">
+          <div class="item-card-row">
+            <div>
+              <div class="item-title">${escapeHTML(m.name)} (${m.qty} ${escapeHTML(m.unit)})</div>
+              <div class="item-sub">🏗️ ${escapeHTML(prj ? prj.name : '')} • 🏪 ${escapeHTML(m.vendor)} • Nhập: ${m.purchaseDate}</div>
+              <div class="item-sub">Tổng tiền: <strong>${formatVND(totalCost)}</strong> • Đã trả: <strong style="color:var(--brand-primary);">${formatVND(paidSum)}</strong></div>
+            </div>
+            <span class="badge ${isFullyPaid ? 'badge-green' : (paidSum > 0 ? 'badge-amber' : 'badge-red')}">
+              ${isFullyPaid ? 'Đã trả hết' : (paidSum > 0 ? 'Đang trả góp' : 'Nợ 100%')}
+            </span>
           </div>
-          ${carryForwardIn > 0 ? `
-            <div style="display:flex; justify-content:space-between; font-size:12.5px; color:var(--danger-debt); background:var(--amber-soft); padding:3px 8px; border-radius:6px;">
-              <span>Số dư ứng kỳ trước chuyển sang:</span>
-              <strong>-${formatVND(carryForwardIn)}</strong>
+          ${!isFullyPaid ? `
+            <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center; background:var(--amber-soft); padding:8px 12px; border-radius:8px;">
+              <span style="font-size:13px; color:var(--amber-warn); font-weight:700;">Còn nợ đại lý: ${formatVND(remaining)}</span>
+              <button class="date-step-btn" style="min-height:36px; padding:0 12px; background:var(--brand-primary); color:#FFF; border:none;" onclick="openMaterialPaymentSheet('${m.id}')">
+                💵 Trả tiền
+              </button>
             </div>
           ` : ''}
         </div>
-        <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px dashed var(--border-subtle);">
-          <div>
-            <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">
-              ${netPayable > 0 || isPaid ? 'Thực lĩnh' : 'Dư ứng khấu trừ kỳ sau'}
-            </div>
-            <div style="font-size:20px; font-weight:800; color:${isPaid ? (isLegacyAudit ? 'var(--amber-warn)' : 'var(--brand-primary)') : (netPayable > 0 ? 'var(--brand-primary)' : 'var(--danger-debt)')}; font-variant-numeric:tabular-nums;">
-              ${isPaid 
-                ? (isLegacyAudit ? 'Đã trả (Lịch sử)' : formatVND(wagePayment.netPaid)) 
-                : (netPayable > 0 ? formatVND(netPayable) : 'Âm ' + formatVND(closingSurplus))}
-            </div>
-            ${isPaid ? (isLegacyAudit
-              ? `<small style="color:var(--amber-warn); font-size:11.5px; font-weight:600;">(Di chuyển từ V1: Cần đối soát số tiền thực chi)</small>`
-              : `<small style="color:var(--brand-primary); font-size:11.5px; font-weight:600;">(Đã chi ngày ${wagePayment.paidDate})</small>`
-            ) : ''}
-          </div>
-          <div style="display:flex; gap:6px;">
-            <button class="date-step-btn" onclick="openVisualPayslip('${w.id}', '${effProjId}')">📤 Phiếu Zalo</button>
-            ${!isPaid && netPayable > 0 ? `<button class="date-step-btn" style="background:var(--brand-primary); color:#FFF; border:none;" onclick="openWagePaymentSheet('${w.id}', '${effProjId}')">Chốt trả</button>` : ''}
-          </div>
-        </div>
-      </div>
-    `;
-  }).join("") || `<div class="item-card" style="text-align:center; padding:20px; color:var(--text-muted);">Không có thợ trong công trình này.</div>`;
+      `;
+    }).join("") || `<div class="empty-state-card"><div class="empty-icon">🧱</div><div class="empty-text">Chưa ghi nhập vật tư nào.</div></div>`;
+  }
 
-  // 3. Vật tư & Nợ đại lý (Hỗ trợ trả từng phần)
-  const mats = store.materials.filter(m => matchesProject(m.projectId));
-  document.getElementById("materialsHistoryList").innerHTML = mats.map(m => {
-    const prj = store.projects.find(p => p.id === m.projectId);
-    const totalCost = Number(m.totalAmount || (m.qty * m.unitPrice) || 0);
-    const paidSum = (m.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
-    const remaining = Math.max(0, totalCost - paidSum);
-    const isFullyPaid = remaining <= 0;
-
-    return `
-      <div class="item-card">
-        <div class="item-card-row">
-          <div>
-            <div class="item-title">${escapeHTML(m.name)} (${m.qty} ${escapeHTML(m.unit)})</div>
-            <div class="item-sub">🏗️ ${escapeHTML(prj ? prj.name : '')} • 🏪 ${escapeHTML(m.vendor)} • Nhập: ${m.purchaseDate}</div>
-            <div class="item-sub">Tổng tiền: <strong>${formatVND(totalCost)}</strong> • Đã trả: <strong style="color:var(--brand-primary);">${formatVND(paidSum)}</strong></div>
-          </div>
-          <span class="badge ${isFullyPaid ? 'badge-green' : (paidSum > 0 ? 'badge-amber' : 'badge-red')}">
-            ${isFullyPaid ? 'Đã trả hết' : (paidSum > 0 ? 'Đang trả góp' : 'Nợ 100%')}
-          </span>
-        </div>
-        ${!isFullyPaid ? `
-          <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center; background:var(--amber-soft); padding:8px 12px; border-radius:8px;">
-            <span style="font-size:13px; color:var(--amber-warn); font-weight:700;">Còn nợ đại lý: ${formatVND(remaining)}</span>
-            <button class="date-step-btn" style="min-height:36px; padding:0 12px; background:var(--brand-primary); color:#FFF; border:none;" onclick="openMaterialPaymentSheet('${m.id}')">
-              💵 Trả tiền
-            </button>
-          </div>
-        ` : ''}
-      </div>
-    `;
-  }).join("") || `<div class="item-card" style="text-align:center; padding:20px; color:var(--text-muted);">Chưa ghi nhập vật tư nào.</div>`;
-
-  // 4. Sổ quỹ thu chi tổng hợp từ nguồn ledger đơn nhất
+  // 5. Phân tầng Thu chi tiền mặt khác
   renderCashflowList();
 }
 
 function renderCashflowList() {
   const listEl = document.getElementById("cashflowHistoryList");
+  if (!listEl) return;
   const fullLedger = getUnifiedCashLedger(store.settings.selectedProjectId);
   const periodLedger = fullLedger.filter(item => isInSelectedPeriod(item.date));
 
@@ -1623,7 +1847,7 @@ function renderCashflowList() {
         </div>
       </div>
     `;
-  }).join("") || `<div class="item-card" style="text-align:center; padding:20px; color:var(--text-muted);">Không có giao dịch dòng tiền trong kỳ này.</div>`;
+  }).join("") || `<div class="empty-state-card"><div class="empty-icon">💵</div><div class="empty-text">Không có giao dịch dòng tiền trong kỳ này.</div></div>`;
 }
 
 // ================= CHI TRẢ LƯƠNG CHUẨN KẾ TOÁN =================
@@ -2282,13 +2506,17 @@ function renderProjectsTab() {
 
   document.getElementById("projectsManageList").innerHTML = list.map(p => {
     const wCount = store.workers.filter(w => isWorkerActiveInProject(w, p.id, store.settings.selectedMonth)).length;
+    const own = p.owner ? `👤 Chủ: ${escapeHTML(p.owner)}` : "";
+    const loc = p.location ? `📍 ${escapeHTML(p.location)}` : "";
+    const sub1 = [own, loc].filter(Boolean).join(" • ");
+    const sub2 = [`📅 Khởi công: ${p.startDate || '—'}`, `👷 ${wCount} thợ`].join(" • ");
     return `
-      <div class="item-card">
+      <div class="item-card project-card-modern">
         <div class="item-card-row">
           <div>
             <div class="item-title">${escapeHTML(p.name)}</div>
-            <div class="item-sub">👤 Chủ: ${escapeHTML(p.owner)} • 📍 ${escapeHTML(p.location)}</div>
-            <div class="item-sub">📅 Khởi công: ${p.startDate} • 👷 ${wCount} thợ</div>
+            ${sub1 ? `<div class="item-sub">${sub1}</div>` : ''}
+            <div class="item-sub">${sub2}</div>
           </div>
           <span class="badge ${p.status === 'active' ? 'badge-green' : 'badge-amber'}">
             ${p.status === 'active' ? 'Đang làm' : 'Đã xong'}
@@ -2397,6 +2625,8 @@ document.getElementById("btnOpenAddWorkerModal")?.addEventListener("click", () =
   populateFormProjectSelects();
   document.getElementById("newWorkerName").value = "";
   document.getElementById("newWorkerRate").value = "450000";
+  const joinInput = document.getElementById("newWorkerJoinDate");
+  if (joinInput) joinInput.value = store.settings.selectedDate || getTodayVN();
   document.getElementById("sheetNewWorkerForm").hidden = false;
 });
 
@@ -2414,7 +2644,7 @@ document.getElementById("btnSubmitNewWorker")?.addEventListener("click", () => {
 
   const role = document.getElementById("newWorkerRole").value;
   const rate = Number(document.getElementById("newWorkerRate").value) || 450000;
-  const today = getTodayVN();
+  const joinDate = document.getElementById("newWorkerJoinDate")?.value || getTodayVN();
 
   store.workers.push({
     id: "W" + (store.workers.length + 1) + "_" + Date.now().toString(36).slice(-4),
@@ -2422,10 +2652,12 @@ document.getElementById("btnSubmitNewWorker")?.addEventListener("click", () => {
     role,
     dailyRate: rate,
     projectId: prjId,
+    joinDate: joinDate,
+    endWorkingDate: null,
     assignments: [
       {
         projectId: prjId,
-        startDate: today,
+        startDate: joinDate,
         endDate: null
       }
     ]
@@ -2809,8 +3041,27 @@ document.getElementById("btnThemeToggle").addEventListener("click", () => {
   renderAll();
 });
 
-document.getElementById("btnQuickAttendance").addEventListener("click", () => {
+document.getElementById("btnQuickAttendance")?.addEventListener("click", () => {
   switchMainTab("tab-attendance");
+});
+
+document.getElementById("btnQuickAdvance")?.addEventListener("click", () => {
+  document.getElementById("btnOpenAdvanceSheet")?.click();
+});
+
+document.getElementById("btnQuickCashflow")?.addEventListener("click", () => {
+  switchMainTab("tab-money");
+  document.querySelector('.subtab-pill[data-subtab="cashflow"]')?.click();
+});
+
+// Lọc dòng tiền tổng hợp (Tổng quỹ)
+document.querySelectorAll("[data-ledger-filter]").forEach(chip => {
+  chip.addEventListener("click", () => {
+    document.querySelectorAll("[data-ledger-filter]").forEach(c => c.classList.remove("active"));
+    chip.classList.add("active");
+    currentLedgerFilter = chip.dataset.ledgerFilter;
+    renderUnifiedLedgerSubtab();
+  });
 });
 
 // Chuyển ngày chấm công

@@ -999,6 +999,156 @@ async function runTests() {
     assert(overflowCheck, `Giao diện trên viewport ${vp.width}px hoàn toàn vừa vặn, không bị tràn màn hình theo chiều ngang`);
   }
 
+  // ================= BÀI TEST 10: THỢ MỚI JOINDATE & ENDWORKINGDATE (LOGIC + DOM UI) =================
+  console.log('\n--- BÀI TEST 10: Thợ mới joinDate & endWorkingDate (Không hiện ngược về quá khứ) ---');
+
+  // Thêm thợ mới vào làm ngày 23/10/2026 và nghỉ ngày 30/10/2026
+  await evaluate(`(() => {
+    store.settings.selectedProjectId = "PRJ_NINH_KIEU";
+    const testWorker = {
+      id: "W_TEST_JOIN_DATE",
+      name: "Trần Văn Thợ Mới 23/10",
+      phone: "0909231026",
+      role: "Thợ hồ mới",
+      defaultRate: 420000,
+      projectId: "PRJ_NINH_KIEU",
+      currentProjectId: "PRJ_NINH_KIEU",
+      joinDate: "2026-10-23",
+      endWorkingDate: "2026-10-30",
+      assignments: [
+        { projectId: "PRJ_NINH_KIEU", startDate: "2026-10-23", endDate: "2026-10-30" }
+      ]
+    };
+    store.workers = store.workers.filter(w => w.id !== testWorker.id);
+    store.workers.push(testWorker);
+    saveStore();
+  })()`);
+
+  // Case 1: Xem ngày 22/10/2026 -> Thợ chưa vào làm -> KHÔNG được hiển thị trong DOM
+  await evaluate(`(() => {
+    store.settings.selectedDate = "2026-10-22";
+    store.selectedDate = "2026-10-22";
+    switchMainTab("tab-attendance");
+    renderAttendanceTab();
+  })()`);
+  await wait(300);
+
+  const isShown22 = await evaluate(`(() => {
+    const names = Array.from(document.querySelectorAll("#attendanceWorkerList .worker-name")).map(el => el.textContent.trim());
+    return names.includes("Trần Văn Thợ Mới 23/10");
+  })()`);
+  const eligible22 = await evaluate(`(() => {
+    const w = store.workers.find(x => x.id === "W_TEST_JOIN_DATE");
+    return isWorkerEligibleForDate(w, "2026-10-22");
+  })()`);
+  assert(!isShown22 && !eligible22, "Xem ngày 22/10/2026 (trước ngày vào làm) -> Thợ mới tuyệt đối KHÔNG hiển thị trong danh sách chấm công");
+
+  // Case 2: Xem ngày 23/10/2026 -> Ngày vào làm -> ĐƯỢC hiển thị trong DOM
+  await evaluate(`(() => {
+    store.settings.selectedDate = "2026-10-23";
+    store.selectedDate = "2026-10-23";
+    renderAttendanceTab();
+  })()`);
+  await wait(300);
+
+  const isShown23 = await evaluate(`(() => {
+    const names = Array.from(document.querySelectorAll("#attendanceWorkerList .worker-name")).map(el => el.textContent.trim());
+    return names.includes("Trần Văn Thợ Mới 23/10");
+  })()`);
+  const eligible23 = await evaluate(`(() => {
+    const w = store.workers.find(x => x.id === "W_TEST_JOIN_DATE");
+    return isWorkerEligibleForDate(w, "2026-10-23");
+  })()`);
+  const hasBadge23 = await evaluate(`(() => {
+    const badges = Array.from(document.querySelectorAll("#attendanceWorkerList .worker-badge-joined"));
+    return badges.some(b => b.textContent.includes("23/10/2026"));
+  })()`);
+
+  assert(isShown23 && eligible23, "Xem ngày 23/10/2026 (ngày vào làm) -> Thợ mới hiển thị chính xác trong danh sách chấm công");
+  assert(hasBadge23, "Hiển thị badge trực quan 'Vào làm: 23/10/2026' cho thợ mới");
+
+  // Case 3: Xem ngày 24/10/2026 -> Đang làm việc -> ĐƯỢC hiển thị trong DOM
+  await evaluate(`(() => {
+    store.settings.selectedDate = "2026-10-24";
+    store.selectedDate = "2026-10-24";
+    renderAttendanceTab();
+  })()`);
+  await wait(300);
+
+  const isShown24 = await evaluate(`(() => {
+    const names = Array.from(document.querySelectorAll("#attendanceWorkerList .worker-name")).map(el => el.textContent.trim());
+    return names.includes("Trần Văn Thợ Mới 23/10");
+  })()`);
+  const eligible24 = await evaluate(`(() => {
+    const w = store.workers.find(x => x.id === "W_TEST_JOIN_DATE");
+    return isWorkerEligibleForDate(w, "2026-10-24");
+  })()`);
+  assert(isShown24 && eligible24, "Xem ngày 24/10/2026 (sau ngày vào làm) -> Thợ mới vẫn hiển thị bình thường");
+
+  // Case 4: Xem ngày 31/10/2026 -> Đã nghỉ việc từ 30/10/2026 -> KHÔNG được hiển thị trong DOM
+  await evaluate(`(() => {
+    store.settings.selectedDate = "2026-10-31";
+    store.selectedDate = "2026-10-31";
+    renderAttendanceTab();
+  })()`);
+  await wait(300);
+
+  const isShown31 = await evaluate(`(() => {
+    const names = Array.from(document.querySelectorAll("#attendanceWorkerList .worker-name")).map(el => el.textContent.trim());
+    return names.includes("Trần Văn Thợ Mới 23/10");
+  })()`);
+  const eligible31 = await evaluate(`(() => {
+    const w = store.workers.find(x => x.id === "W_TEST_JOIN_DATE");
+    return isWorkerEligibleForDate(w, "2026-10-31");
+  })()`);
+  assert(!isShown31 && !eligible31, "Xem ngày 31/10/2026 (sau ngày nghỉ việc 30/10/2026) -> Thợ không còn hiển thị nữa");
+
+  // ================= BÀI TEST 11: CHỤP ẢNH PREVIEW 4 MÀN HÌNH REDESIGN 2027 (S23 ULTRA 412x915) =================
+  console.log('\n--- BÀI TEST 11: Chụp ảnh Preview 4 màn hình Redesign 2027 trên S23 Ultra ---');
+
+  await sendCDP('Emulation.setDeviceMetricsOverride', {
+    width: 412,
+    height: 915,
+    deviceScaleFactor: 2.625,
+    mobile: true
+  });
+
+  // Màn 1: Tổng quan (Overview)
+  await evaluate(`(() => {
+    store.settings.theme = "light";
+    renderAll();
+    switchMainTab("tab-overview");
+  })()`);
+  await wait(400);
+  await captureScreenshot(path.join(ARTIFACT_DIR, 'redesign_2027_tab1_overview.png'));
+
+  // Màn 2: Chấm công (Attendance)
+  await evaluate(`(() => {
+    store.settings.selectedDate = "2026-10-23";
+    store.selectedDate = "2026-10-23";
+    switchMainTab("tab-attendance");
+    renderAttendanceTab();
+  })()`);
+  await wait(400);
+  await captureScreenshot(path.join(ARTIFACT_DIR, 'redesign_2027_tab2_attendance.png'));
+
+  // Màn 3: Sổ tiền (Money - Unified Ledger Stream)
+  await evaluate(`(() => {
+    switchMainTab("tab-money");
+    document.querySelector('.subtab-pill[data-subtab="total"]').click();
+    renderMoneyTab();
+  })()`);
+  await wait(400);
+  await captureScreenshot(path.join(ARTIFACT_DIR, 'redesign_2027_tab3_money.png'));
+
+  // Màn 4: Công trình (Projects)
+  await evaluate(`(() => {
+    switchMainTab("tab-projects");
+    renderProjectsTab();
+  })()`);
+  await wait(400);
+  await captureScreenshot(path.join(ARTIFACT_DIR, 'redesign_2027_tab4_projects.png'));
+
   // Khôi phục S23 Ultra tiêu chuẩn
   await sendCDP('Emulation.setDeviceMetricsOverride', {
     width: 412,
