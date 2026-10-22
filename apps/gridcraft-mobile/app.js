@@ -1,14 +1,104 @@
 /**
  * GRIDCRAFT 2.0 — SỔ CÔNG TRÌNH (SAMSUNG GALAXY S23 ULTRA EDITION)
- * UI/UX Cải tổ toàn diện: Chuẩn One UI 6, Chống chói nắng công trường, S-Pen Palm Rejection,
- * Bảo toàn lịch sử đa dự án, Rate Snapshot bất biến, Xuất Excel .xlsx đa sheet.
+ * Core Architecture & Business Logic Engine:
+ * - Bảo toàn lịch sử đa công trình, đa thợ qua nhiều năm (2025 - 2027+)
+ * - Kế toán tiền mặt chuẩn: Chốt trả lương ghi sổ quỹ thực tế, Nợ vật tư thanh toán từng phần
+ * - Bộ lọc kỳ Tuần/Tháng/Năm chuẩn ISO và múi giờ Asia/Ho_Chi_Minh (UTC+7)
+ * - Khung ký S-Pen Pointer Events, Pointer Capture, Palm Rejection & Ký bù
+ * - Lưu trữ kết hợp IndexedDB + localStorage, Migration an toàn, Chống XSS
+ * - Xuất Excel .xlsx 8 sheet toàn diện & Nhập/Xuất sao lưu
  */
 
 const STORAGE_KEY = "GRIDCRAFT_SO_CONG_TRINH_V2";
+const DB_NAME = "GridCraft_DB";
+const DB_VERSION = 1;
+const STORE_NAME = "app_state";
 
-// Dữ liệu mẫu khởi tạo chuẩn thực tế
+// ================= TIỆN ÍCH AN TOÀN & XSS =================
+function escapeHTML(str) {
+  if (str == null) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatVND(num) {
+  const n = Math.round(Number(num) || 0);
+  return n.toLocaleString("vi-VN") + " đ";
+}
+
+function readMoneyVietnamese(amount) {
+  const n = Math.round(Number(amount) || 0);
+  if (n === 0) return "Không đồng";
+  if (n >= 1000000000) return (n / 1000000000).toFixed(2).replace(/\.00$/, "") + " tỷ đồng";
+  const trieu = Math.floor(n / 1000000);
+  const nghin = Math.floor((n % 1000000) / 1000);
+  let parts = [];
+  if (trieu > 0) parts.push(`${trieu} triệu`);
+  if (nghin > 0) parts.push(`${nghin} nghìn`);
+  return (parts.join(" ") + " đồng").replace(/^./, c => c.toUpperCase());
+}
+
+// ================= MÚI GIỜ ASIA/HO_CHI_MINH (UTC+7) & XỬ LÝ KỲ =================
+function getTodayVN() {
+  const now = new Date();
+  const utc = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const vnDate = new Date(utc + (7 * 3600000));
+  return vnDate.toISOString().slice(0, 10);
+}
+
+// Tính toán tuần ISO (Thứ 2 đến Chủ nhật)
+function getWeekRange(dateStr) {
+  if (!dateStr) dateStr = getTodayVN();
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const date = new Date(y, m - 1, d);
+  const day = date.getDay(); // 0: CN, 1: T2, ..., 6: T7
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+
+  const monday = new Date(date);
+  monday.setDate(date.getDate() + diffToMonday);
+
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+
+  const fmt = dt => {
+    const yr = dt.getFullYear();
+    const mo = String(dt.getMonth() + 1).padStart(2, "0");
+    const da = String(dt.getDate()).padStart(2, "0");
+    return `${yr}-${mo}-${da}`;
+  };
+
+  return {
+    start: fmt(monday),
+    end: fmt(sunday),
+    displayStart: `${String(monday.getDate()).padStart(2, "0")}/${String(monday.getMonth() + 1).padStart(2, "0")}`,
+    displayEnd: `${String(sunday.getDate()).padStart(2, "0")}/${String(sunday.getMonth() + 1).padStart(2, "0")}/${sunday.getFullYear()}`
+  };
+}
+
+function isInSelectedPeriod(dateStr) {
+  if (!dateStr) return false;
+  const mode = store.settings.periodMode;
+  const selMonth = store.settings.selectedMonth; // YYYY-MM
+  const selDate = store.settings.selectedDate;   // YYYY-MM-DD
+
+  if (mode === "month") {
+    return dateStr.startsWith(selMonth);
+  }
+  if (mode === "year") {
+    return dateStr.startsWith(selMonth.slice(0, 4));
+  }
+  // Mode week
+  const week = getWeekRange(selDate);
+  return dateStr >= week.start && dateStr <= week.end;
+}
+
+// ================= DỮ LIỆU MẪU KHỞI TẠO & MIGRATION =================
 function createDefaultStore() {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = getTodayVN();
   const currentMonth = today.slice(0, 7);
   return {
     version: 2,
@@ -54,7 +144,6 @@ function createDefaultStore() {
       { id: "W05", name: "Võ Minh Tâm", role: "Thợ điện nước", dailyRate: 480000, projectId: "PRJ_CAI_RANG" },
       { id: "W06", name: "Đặng Văn Hùng", role: "Thợ hồ phụ", dailyRate: 340000, projectId: "PRJ_CAI_RANG" }
     ],
-    // Chấm công: Luôn gắn chặt rateSnapshot tại thời điểm chấm
     attendance: [
       { id: "ATT_1", projectId: "PRJ_NINH_KIEU", workerId: "W01", date: today, units: 1.0, rateSnapshot: 500000 },
       { id: "ATT_2", projectId: "PRJ_NINH_KIEU", workerId: "W02", date: today, units: 1.0, rateSnapshot: 450000 },
@@ -71,6 +160,7 @@ function createDefaultStore() {
         note: "Ứng ăn sáng & xăng xe",
         signedStatus: "signed",
         signatureDataUrl: null,
+        signedAt: today,
         signatureHash: "PRJ_NINH_KIEU|W01|500000|" + today
       },
       {
@@ -82,6 +172,7 @@ function createDefaultStore() {
         note: "Gửi tiền về quê (Chưa ký)",
         signedStatus: "unsigned",
         signatureDataUrl: null,
+        signedAt: null,
         signatureHash: null
       }
     ],
@@ -93,9 +184,10 @@ function createDefaultStore() {
         qty: 50,
         unit: "Bao",
         unitPrice: 92000,
+        totalAmount: 4600000,
         vendor: "Đại lý VLXD Tư Thành",
-        paidStatus: "debt", // "debt" (Nợ đại lý - KHÔNG trừ tiền mặt) | "paid" (Đã trả tiền mặt)
-        date: today
+        purchaseDate: "2026-10-01",
+        payments: [] // Đang nợ đại lý 100%
       },
       {
         id: "MAT_2",
@@ -104,9 +196,17 @@ function createDefaultStore() {
         qty: 6,
         unit: "Khối (m³)",
         unitPrice: 380000,
+        totalAmount: 2280000,
         vendor: "Bãi cát Sông Hậu",
-        paidStatus: "paid",
-        date: today
+        purchaseDate: today,
+        payments: [
+          {
+            paymentId: "MPAY_INIT_1",
+            amount: 2280000,
+            paidDate: today,
+            note: "Thanh toán tiền mặt khi giao hàng"
+          }
+        ]
       }
     ],
     cashTransactions: [
@@ -127,67 +227,153 @@ function createDefaultStore() {
         date: today
       }
     ],
-    payrollStatus: {}, // key: `${projectId}_${workerId}_${YYYY-MM}` -> "paid"
+    wagePayments: [], // Giao dịch chi trả lương thực tế: { id, projectId, workerId, periodId, grossWage, advanceDeducted, netPaid, paidDate, note }
     auditLogs: []
   };
 }
 
-let store = loadStore();
+function migrateStore(rawStore) {
+  if (!rawStore || typeof rawStore !== "object") return createDefaultStore();
+  const d = { ...createDefaultStore(), ...rawStore };
+
+  // 1. Đảm bảo mảng tồn tại
+  if (!Array.isArray(d.projects)) d.projects = [];
+  if (!Array.isArray(d.workers)) d.workers = [];
+  if (!Array.isArray(d.attendance)) d.attendance = [];
+  if (!Array.isArray(d.advances)) d.advances = [];
+  if (!Array.isArray(d.materials)) d.materials = [];
+  if (!Array.isArray(d.cashTransactions)) d.cashTransactions = [];
+  if (!Array.isArray(d.wagePayments)) d.wagePayments = [];
+  if (!Array.isArray(d.auditLogs)) d.auditLogs = [];
+
+  // 2. Migration vật tư: chuyển đổi cấu trúc cũ sang có payments
+  d.materials = d.materials.map(m => {
+    const qty = Number(m.qty) || 1;
+    const price = Number(m.unitPrice) || 0;
+    const total = m.totalAmount || (qty * price);
+    let payments = Array.isArray(m.payments) ? m.payments : [];
+
+    // Nếu dữ liệu cũ có paidStatus === 'paid' mà payments rỗng
+    if (m.paidStatus === "paid" && payments.length === 0) {
+      payments = [
+        {
+          paymentId: "MPAY_MIG_" + (m.id || Date.now()),
+          amount: total,
+          paidDate: m.date || d.settings.selectedDate || getTodayVN(),
+          note: "Thanh toán tiền mặt (Di chuyển từ phiên bản cũ)"
+        }
+      ];
+    }
+    return {
+      id: m.id || ("MAT_" + Date.now() + "_" + Math.random().toString(36).slice(2, 6)),
+      projectId: m.projectId,
+      name: m.name || "Vật tư xây dựng",
+      qty,
+      unit: m.unit || "Bao",
+      unitPrice: price,
+      totalAmount: total,
+      vendor: m.vendor || "Đại lý VLXD",
+      purchaseDate: m.purchaseDate || m.date || getTodayVN(),
+      payments
+    };
+  });
+
+  // 3. Migration chấm công: đảm bảo rateSnapshot luôn tồn tại
+  d.attendance = d.attendance.map(a => {
+    if (a.rateSnapshot == null) {
+      const w = d.workers.find(x => x.id === a.workerId);
+      a.rateSnapshot = w ? w.dailyRate : 450000;
+    }
+    return a;
+  });
+
+  d.version = 2;
+  return d;
+}
+
+// ================= STORAGE LAYER: INDEXEDDB + LOCALSTORAGE =================
+class AppStorage {
+  static db = null;
+
+  static async initDB() {
+    if (typeof indexedDB === "undefined") return null;
+    return new Promise(resolve => {
+      try {
+        const req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = e => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME);
+          }
+        };
+        req.onsuccess = e => {
+          AppStorage.db = e.target.result;
+          resolve(AppStorage.db);
+        };
+        req.onerror = () => resolve(null);
+      } catch (err) {
+        resolve(null);
+      }
+    });
+  }
+
+  static loadSync() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return createDefaultStore();
+      return migrateStore(JSON.parse(raw));
+    } catch (e) {
+      return createDefaultStore();
+    }
+  }
+
+  static async save(data) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+      console.warn("LocalStorage save warning (có thể do dung lượng ảnh ký):", e);
+    }
+
+    if (AppStorage.db) {
+      try {
+        const tx = AppStorage.db.transaction(STORE_NAME, "readwrite");
+        tx.objectStore(STORE_NAME).put(data, "current_state");
+      } catch (err) {
+        console.warn("IndexedDB save error:", err);
+      }
+    }
+  }
+
+  static async loadFromIndexedDB() {
+    if (!AppStorage.db) await AppStorage.initDB();
+    if (!AppStorage.db) return null;
+    return new Promise(resolve => {
+      try {
+        const tx = AppStorage.db.transaction(STORE_NAME, "readonly");
+        const req = tx.objectStore(STORE_NAME).get("current_state");
+        req.onsuccess = e => {
+          if (e.target.result) resolve(migrateStore(e.target.result));
+          else resolve(null);
+        };
+        req.onerror = () => resolve(null);
+      } catch (err) {
+        resolve(null);
+      }
+    });
+  }
+}
+
+let store = AppStorage.loadSync();
 let undoSnapshot = null;
 let undoTimer = null;
 let currentAdvanceAmount = 500000;
 let activePayslipWorker = null;
-
-function loadStore() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return createDefaultStore();
-    const parsed = JSON.parse(raw);
-    return { ...createDefaultStore(), ...parsed };
-  } catch (e) {
-    return createDefaultStore();
-  }
-}
+let activeSupplementalAdvanceId = null;
+let activeMaterialDebtMatId = null;
+let activeWagePaymentWorkerId = null;
 
 function saveStore() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-}
-
-// Định dạng tiền VND chuẩn hiển thị
-function formatVND(num) {
-  const n = Math.round(Number(num) || 0);
-  return n.toLocaleString("vi-VN") + " đ";
-}
-
-// Đọc số tiền bằng chữ tiếng Việt (Chống bấm thừa số 0 trên công trường)
-function readMoneyVietnamese(amount) {
-  const n = Math.round(Number(amount) || 0);
-  if (n === 0) return "Không đồng";
-  if (n >= 1000000000) return (n / 1000000000).toFixed(2).replace(/\.00$/, "") + " tỷ đồng";
-  const trieu = Math.floor(n / 1000000);
-  const nghin = Math.floor((n % 1000000) / 1000);
-  let parts = [];
-  if (trieu > 0) parts.push(`${trieu} triệu`);
-  if (nghin > 0) parts.push(`${nghin} nghìn`);
-  return (parts.join(" ") + " đồng").replace(/^./, c => c.toUpperCase());
-}
-
-// Lọc ngày theo kỳ được chọn
-function isInSelectedPeriod(dateStr) {
-  if (!dateStr) return false;
-  const mode = store.settings.periodMode;
-  const selMonth = store.settings.selectedMonth; // YYYY-MM
-  if (mode === "month") {
-    return dateStr.startsWith(selMonth);
-  }
-  if (mode === "year") {
-    return dateStr.startsWith(selMonth.slice(0, 4));
-  }
-  // Chế độ Tuần: +/- 3.5 ngày quanh selectedDate
-  const target = new Date(store.settings.selectedDate).getTime();
-  const cur = new Date(dateStr).getTime();
-  const diffDays = Math.abs(cur - target) / (1000 * 3600 * 24);
-  return diffDays <= 3.5;
+  AppStorage.save(store);
 }
 
 function matchesProject(itemProjectId) {
@@ -195,7 +381,7 @@ function matchesProject(itemProjectId) {
   return sel === "ALL" || itemProjectId === sel;
 }
 
-// Tính toán tài chính chuẩn xác theo bản đặc tả
+// ================= TÍNH TOÁN TÀI CHÍNH CHUẨN XÁC =================
 function calculateFinancials() {
   let totalCashIn = 0;
   let totalCashOut = 0;
@@ -205,43 +391,66 @@ function calculateFinancials() {
   let periodAttendanceUnits = 0;
   let periodAdvanceTotal = 0;
   let openMaterialDebt = 0;
+  let periodWagePayoutTotal = 0;
+  let periodMaterialPaidTotal = 0;
 
-  // 1. Giao dịch thu chi tiền mặt
+  // 1. Thu chi tiền mặt từ sổ thu chi
   store.cashTransactions.forEach(tx => {
     if (!matchesProject(tx.projectId)) return;
+    const amt = Number(tx.amountVnd || 0);
     if (tx.type === "in") {
-      totalCashIn += tx.amountVnd;
-      if (isInSelectedPeriod(tx.date)) periodCashIn += tx.amountVnd;
+      totalCashIn += amt;
+      if (isInSelectedPeriod(tx.date)) periodCashIn += amt;
     } else {
-      totalCashOut += tx.amountVnd;
-      if (isInSelectedPeriod(tx.date)) periodCashOut += tx.amountVnd;
+      totalCashOut += amt;
+      if (isInSelectedPeriod(tx.date)) periodCashOut += amt;
     }
   });
 
-  // 2. Tiền thợ tạm ứng (Là tiền mặt đã xuất từ quỹ)
+  // 2. Tiền tạm ứng (là tiền mặt xuất từ quỹ tại ngày tạm ứng)
   store.advances.forEach(adv => {
     if (!matchesProject(adv.projectId)) return;
-    totalCashOut += adv.amountVnd;
+    const amt = Number(adv.amountVnd || 0);
+    totalCashOut += amt;
     if (isInSelectedPeriod(adv.date)) {
-      periodCashOut += adv.amountVnd;
-      periodAdvanceTotal += adv.amountVnd;
+      periodCashOut += amt;
+      periodAdvanceTotal += amt;
     }
   });
 
-  // 3. Vật tư: Phân định rõ nợ đại lý và đã trả tiền mặt
+  // 3. Chi trả lương thực tế (quyết toán cuối kỳ)
+  store.wagePayments.forEach(wp => {
+    if (!matchesProject(wp.projectId)) return;
+    const amt = Number(wp.netPaid || 0);
+    totalCashOut += amt;
+    if (isInSelectedPeriod(wp.paidDate)) {
+      periodCashOut += amt;
+      periodWagePayoutTotal += amt;
+    }
+  });
+
+  // 4. Vật tư: Công nợ đại lý và Tiền mặt đã chi theo ngày thanh toán thực tế (paidDate)
   store.materials.forEach(mat => {
     if (!matchesProject(mat.projectId)) return;
-    const cost = mat.qty * mat.unitPrice;
-    if (mat.paidStatus === "paid") {
-      totalCashOut += cost;
-      if (isInSelectedPeriod(mat.date)) periodCashOut += cost;
-    } else {
-      // Nợ gối đầu đại lý: KHÔNG trừ vào quỹ tiền mặt
-      openMaterialDebt += cost;
-    }
+    const totalCost = Number(mat.totalAmount || (mat.qty * mat.unitPrice) || 0);
+    const paidSum = (mat.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+    const remaining = Math.max(0, totalCost - paidSum);
+
+    // Công nợ còn mở (KHÔNG trừ tiền mặt)
+    openMaterialDebt += remaining;
+
+    // Chi tiền mặt cho vật tư: TÍNH THEO NGÀY THỰC TRẢ (paidDate), KHÔNG lấy purchaseDate!
+    (mat.payments || []).forEach(p => {
+      const pAmt = Number(p.amount || 0);
+      totalCashOut += pAmt;
+      if (isInSelectedPeriod(p.paidDate)) {
+        periodCashOut += pAmt;
+        periodMaterialPaidTotal += pAmt;
+      }
+    });
   });
 
-  // 4. Ngày công trong kỳ
+  // 5. Tổng công trong kỳ
   store.attendance.forEach(att => {
     if (!matchesProject(att.projectId)) return;
     if (isInSelectedPeriod(att.date)) {
@@ -255,7 +464,9 @@ function calculateFinancials() {
     periodCashOut,
     periodAttendanceUnits,
     periodAdvanceTotal,
-    openMaterialDebt
+    openMaterialDebt,
+    periodWagePayoutTotal,
+    periodMaterialPaidTotal
   };
 }
 
@@ -268,6 +479,7 @@ function renderAll() {
   renderAttendanceTab();
   renderMoneyTab();
   renderProjectsTab();
+  populateFormProjectSelects();
 }
 
 function updateThemeIcons() {
@@ -284,25 +496,27 @@ function renderHeaderAndPeriod() {
   const selId = store.settings.selectedProjectId;
   const prj = store.projects.find(p => p.id === selId);
   const nameEl = document.getElementById("headerProjectName");
-  const floatNameEl = document.getElementById("floatingProjectShortName");
   const dotEl = document.getElementById("headerProjectDot");
 
   if (selId === "ALL" || !prj) {
     nameEl.textContent = `Tất cả công trình (${store.projects.length})`;
-    floatNameEl.textContent = "Tất cả CT";
     dotEl.style.background = "#117D70";
   } else {
     nameEl.textContent = prj.name;
-    floatNameEl.textContent = prj.name.replace("Nhà phố ", "").replace("Biệt thự ", "");
     dotEl.style.background = prj.status === "completed" ? "#7E9592" : "#117D70";
   }
 
   // Nhãn hiển thị kỳ
-  const [y, m] = store.settings.selectedMonth.split("-");
   const labelEl = document.getElementById("currentPeriodLabel");
-  if (store.settings.periodMode === "month") labelEl.textContent = `Tháng ${m}/${y}`;
-  else if (store.settings.periodMode === "year") labelEl.textContent = `Năm ${y}`;
-  else labelEl.textContent = `Tuần (${store.settings.selectedDate.slice(5)})`;
+  const [y, m] = store.settings.selectedMonth.split("-");
+  if (store.settings.periodMode === "month") {
+    labelEl.textContent = `Tháng ${m}/${y}`;
+  } else if (store.settings.periodMode === "year") {
+    labelEl.textContent = `Năm ${y}`;
+  } else {
+    const week = getWeekRange(store.settings.selectedDate);
+    labelEl.textContent = `Tuần (${week.displayStart} - ${week.displayEnd})`;
+  }
 
   document.querySelectorAll(".period-tab").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.mode === store.settings.periodMode);
@@ -336,15 +550,16 @@ function renderOverviewTab() {
     `Ứng: ${(fin.periodAdvanceTotal / 1e6).toFixed(1)}tr • Nợ VT: ${(fin.openMaterialDebt / 1e6).toFixed(1)}tr`;
 
   // Nhắc việc thông minh
-  const unsignedCount = store.advances.filter(a => matchesProject(a.projectId) && a.signedStatus === "unsigned").length;
+  const unsignedList = store.advances.filter(a => matchesProject(a.projectId) && a.signedStatus === "unsigned");
   const alertsEl = document.getElementById("overviewAlerts");
   alertsEl.innerHTML = "";
-  if (unsignedCount > 0) {
+  if (unsignedList.length > 0) {
     alertsEl.innerHTML = `
       <div class="notice-banner">
         <span>⚠️</span>
         <div>
-          Có <strong>${unsignedCount} phiếu ứng tiền chưa ký nhận</strong>. Chạm vào mục Sổ tiền để đưa máy cho thợ ký bổ sung bằng S-Pen.
+          Có <strong>${unsignedList.length} phiếu ứng tiền chưa ký nhận</strong>.
+          Vào mục Sổ tiền để đưa máy cho thợ ký bổ sung bằng S-Pen.
         </div>
       </div>
     `;
@@ -359,8 +574,8 @@ function renderOverviewTab() {
       <div class="item-card" onclick="selectProject('${p.id}')" style="cursor:pointer; ${isSel ? 'border-color: var(--brand-primary); border-width: 1.5px;' : ''}">
         <div class="item-card-row">
           <div>
-            <div class="item-title">${p.name}</div>
-            <div class="item-sub">📍 ${p.location} • 👤 Chủ: ${p.owner} • 👷 ${wCount} thợ</div>
+            <div class="item-title">${escapeHTML(p.name)}</div>
+            <div class="item-sub">📍 ${escapeHTML(p.location)} • 👤 Chủ: ${escapeHTML(p.owner)} • 👷 ${wCount} thợ</div>
           </div>
           <span class="badge ${p.status === 'active' ? 'badge-green' : 'badge-amber'}">
             ${p.status === 'active' ? 'Đang làm' : 'Đã xong'}
@@ -373,12 +588,20 @@ function renderOverviewTab() {
 
 function renderAttendanceTab() {
   const isAll = store.settings.selectedProjectId === "ALL";
-  document.getElementById("attendanceAllProjectsBanner").hidden = !isAll;
-  document.getElementById("attendanceStickyFooter").style.display = isAll ? "none" : "flex";
+  const prj = store.projects.find(p => p.id === store.settings.selectedProjectId);
+  const isCompleted = prj && prj.status === "completed";
+
+  const allBanner = document.getElementById("attendanceAllProjectsBanner");
+  const closedBanner = document.getElementById("attendanceClosedProjectBanner");
+  const stickyFooter = document.getElementById("attendanceStickyFooter");
+
+  allBanner.hidden = !isAll;
+  closedBanner.hidden = isAll || !isCompleted;
+  stickyFooter.style.display = (isAll || isCompleted) ? "none" : "flex";
 
   const dateStr = store.settings.selectedDate;
   document.getElementById("attendanceDateInput").value = dateStr;
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const todayStr = getTodayVN();
   document.getElementById("attendanceDateHuman").textContent =
     dateStr === todayStr ? "Hôm nay" : `Ngày ${dateStr.split("-").reverse().join("/")}`;
 
@@ -397,34 +620,34 @@ function renderAttendanceTab() {
     else countUnset++;
 
     const rateShown = rec ? rec.rateSnapshot : w.dailyRate;
-    const initial = w.name.split(" ").slice(-1)[0]?.slice(0, 2).toUpperCase() || "TH";
+    const initial = escapeHTML(w.name.split(" ").slice(-1)[0]?.slice(0, 2).toUpperCase() || "TH");
 
     return `
       <div class="worker-att-card">
         <div class="worker-att-top">
           <div class="worker-avatar">${initial}</div>
           <div class="worker-meta">
-            <div class="worker-name">${w.name}</div>
-            <div class="worker-role-rate">${w.role} • ${formatVND(rateShown)}/công</div>
+            <div class="worker-name">${escapeHTML(w.name)}</div>
+            <div class="worker-role-rate">${escapeHTML(w.role)} • ${formatVND(rateShown)}/công</div>
           </div>
           <span class="badge ${val === null ? 'badge-amber' : 'badge-green'}">
             ${val === null ? 'Chưa ghi' : val + ' công'}
           </span>
         </div>
         <div class="att-pills-group">
-          <button class="att-pill-btn ${val === 1.0 ? 'active-1' : ''}" onclick="setWorkerAttendance('${w.id}', 1.0)">
+          <button class="att-pill-btn ${val === 1.0 ? 'active-1' : ''}" ${isCompleted ? 'disabled style="opacity:0.6;"' : ''} onclick="setWorkerAttendance('${w.id}', 1.0)">
             <strong>1.0</strong>
             <small>Đủ</small>
           </button>
-          <button class="att-pill-btn ${val === 0.5 ? 'active-05' : ''}" onclick="setWorkerAttendance('${w.id}', 0.5)">
+          <button class="att-pill-btn ${val === 0.5 ? 'active-05' : ''}" ${isCompleted ? 'disabled style="opacity:0.6;"' : ''} onclick="setWorkerAttendance('${w.id}', 0.5)">
             <strong>0.5</strong>
             <small>Nửa</small>
           </button>
-          <button class="att-pill-btn ${val === 1.5 ? 'active-15' : ''}" onclick="setWorkerAttendance('${w.id}', 1.5)">
+          <button class="att-pill-btn ${val === 1.5 ? 'active-15' : ''}" ${isCompleted ? 'disabled style="opacity:0.6;"' : ''} onclick="setWorkerAttendance('${w.id}', 1.5)">
             <strong>1.5</strong>
             <small>Tăng ca</small>
           </button>
-          <button class="att-pill-btn ${val === 0 ? 'active-0' : ''}" onclick="setWorkerAttendance('${w.id}', 0)">
+          <button class="att-pill-btn ${val === 0 ? 'active-0' : ''}" ${isCompleted ? 'disabled style="opacity:0.6;"' : ''} onclick="setWorkerAttendance('${w.id}', 0)">
             <strong>0.0</strong>
             <small>Nghỉ</small>
           </button>
@@ -441,7 +664,7 @@ function renderAttendanceTab() {
     <span>🟡 Nửa: ${count05}</span>
     <span>🔵 TC: ${count15}</span>
     <span>🔴 Nghỉ: ${count0}</span>
-    ${countUnset > 0 ? `<span style="color:var(--amber-warn);">⚠️ Chưa chấm: ${countUnset}</span>` : ''}
+    ${countUnset > 0 ? `<span style="color:var(--amber-warn);">⚠️ Chưa chấm: ${countUnset}</span>` : ""}
   `;
 }
 
@@ -476,12 +699,27 @@ window.setWorkerAttendance = function(workerId, units) {
   renderAll();
 };
 
-// Điểm danh cả đội (1.0 Công) có cảnh báo ghi đè & Hoàn tác
+// Điểm danh cả đội
 document.getElementById("btnMarkAllFullDay").addEventListener("click", () => {
   const prjId = store.settings.selectedProjectId;
-  if (prjId === "ALL") return;
+  if (prjId === "ALL") {
+    showToast("Vui lòng chọn 1 công trình cụ thể trước khi điểm danh!");
+    openProjectPicker();
+    return;
+  }
+
+  const prj = store.projects.find(p => p.id === prjId);
+  if (prj && prj.status === "completed") {
+    showToast("Công trình đã đóng, không thể điểm danh!");
+    return;
+  }
+
   const dateStr = store.settings.selectedDate;
   const workers = store.workers.filter(w => w.projectId === prjId);
+  if (workers.length === 0) {
+    showToast("Chưa có thợ trong công trình này!");
+    return;
+  }
 
   const hasSpecial = store.attendance.some(
     a => a.projectId === prjId && a.date === dateStr && a.units !== 1.0
@@ -552,17 +790,25 @@ function renderMoneyTab() {
 
   document.getElementById("advancesHistoryList").innerHTML = advList.map(a => {
     const w = store.workers.find(x => x.id === a.workerId);
+    const prj = store.projects.find(p => p.id === a.projectId);
     return `
       <div class="item-card">
         <div class="item-card-row">
           <div>
-            <div class="item-title">${w ? w.name : 'Thợ'} — <span style="color:var(--amber-warn);">${formatVND(a.amountVnd)}</span></div>
-            <div class="item-sub">📅 ${a.date} • ${a.note || 'Tạm ứng'}</div>
+            <div class="item-title">${escapeHTML(w ? w.name : 'Thợ')} — <span style="color:var(--amber-warn); font-weight:800;">${formatVND(a.amountVnd)}</span></div>
+            <div class="item-sub">🏗️ ${escapeHTML(prj ? prj.name : '')} • 📅 ${a.date} • ${escapeHTML(a.note || 'Tạm ứng')}</div>
           </div>
           <span class="badge ${a.signedStatus === 'signed' ? 'badge-green' : 'badge-amber'}">
             ${a.signedStatus === 'signed' ? '✍️ Đã ký S-Pen' : '⚠️ Chưa ký'}
           </span>
         </div>
+        ${a.signedStatus === 'unsigned' ? `
+          <div style="margin-top:8px;">
+            <button class="btn-sign-supplement" onclick="openSupplementalSign('${a.id}')">
+              ✍️ Đưa S-Pen ký bổ sung ngay
+            </button>
+          </div>
+        ` : ''}
         ${a.signatureDataUrl ? `<div style="margin-top:8px;"><img src="${a.signatureDataUrl}" alt="Chữ ký thợ" style="height:44px; border:1px solid var(--border-card); border-radius:6px; background:#FFF; padding:2px;" /></div>` : ''}
       </div>
     `;
@@ -571,30 +817,34 @@ function renderMoneyTab() {
   // 2. Bảng lương tự động
   const workers = store.workers.filter(w => matchesProject(w.projectId));
   document.getElementById("payrollWorkerList").innerHTML = workers.map(w => {
+    const prj = store.projects.find(p => p.id === w.projectId);
     const attRecords = store.attendance.filter(
-      a => a.workerId === w.id && matchesProject(a.projectId) && isInSelectedPeriod(a.date)
+      a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
     );
     const totalUnits = attRecords.reduce((s, r) => s + Number(r.units || 0), 0);
     const grossWage = attRecords.reduce((s, r) => s + Number(r.units || 0) * Number(r.rateSnapshot || w.dailyRate), 0);
 
     const advRecords = store.advances.filter(
-      a => a.workerId === w.id && matchesProject(a.projectId) && isInSelectedPeriod(a.date)
+      a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
     );
     const totalAdv = advRecords.reduce((s, r) => s + Number(r.amountVnd || 0), 0);
     const netPay = grossWage - totalAdv;
 
-    const payKey = `${w.projectId}_${w.id}_${store.settings.selectedMonth}`;
-    const isPaid = store.payrollStatus[payKey] === "paid";
+    // Kiểm tra đã thanh toán lương thực tế chưa
+    const periodId = store.settings.selectedMonth;
+    const paidRec = store.wagePayments.find(
+      wp => wp.projectId === w.projectId && wp.workerId === w.id && wp.periodId === periodId
+    );
 
     return `
       <div class="item-card">
         <div class="item-card-row">
           <div>
-            <div class="item-title">${w.name}</div>
-            <div class="item-sub">${w.role} • <strong>${totalUnits} công</strong> (${formatVND(w.dailyRate)}/công)</div>
+            <div class="item-title">${escapeHTML(w.name)}</div>
+            <div class="item-sub">🏗️ ${escapeHTML(prj ? prj.name : '')} • ${escapeHTML(w.role)} • <strong>${totalUnits} công</strong> (${formatVND(w.dailyRate)}/công)</div>
           </div>
-          <span class="badge ${isPaid ? 'badge-green' : (netPay < 0 ? 'badge-red' : 'badge-blue')}">
-            ${isPaid ? '✅ Đã trả' : (netPay < 0 ? 'Dư ứng sang kỳ sau' : 'Chờ tất toán')}
+          <span class="badge ${paidRec ? 'badge-green' : (netPay < 0 ? 'badge-red' : 'badge-blue')}">
+            ${paidRec ? '✅ Đã chi trả' : (netPay < 0 ? 'Dư ứng sang kỳ sau' : 'Chờ tất toán')}
           </span>
         </div>
         <div style="margin: 10px 0; font-size:13.5px; display:flex; justify-content:space-between; color:var(--text-secondary);">
@@ -603,86 +853,349 @@ function renderMoneyTab() {
         </div>
         <div style="display:flex; justify-content:space-between; align-items:center; padding-top:10px; border-top:1px dashed var(--border-subtle);">
           <div>
-            <div style="font-size:10.5px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">Thực lĩnh còn lại</div>
-            <div style="font-size:20px; font-weight:800; color:var(--brand-primary); font-variant-numeric:tabular-nums;">
+            <div style="font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase;">
+              ${netPay >= 0 ? 'Thực lĩnh còn nhận' : 'Dư ứng khấu trừ sau'}
+            </div>
+            <div style="font-size:20px; font-weight:800; color:${netPay >= 0 ? 'var(--brand-primary)' : 'var(--danger-debt)'}; font-variant-numeric:tabular-nums;">
               ${netPay >= 0 ? formatVND(netPay) : 'Âm ' + formatVND(Math.abs(netPay))}
             </div>
+            ${paidRec ? `<small style="color:var(--brand-primary); font-size:11.5px; font-weight:600;">(Đã chi ngày ${paidRec.paidDate})</small>` : ''}
           </div>
           <div style="display:flex; gap:6px;">
             <button class="date-step-btn" onclick="openVisualPayslip('${w.id}')">📤 Phiếu Zalo</button>
-            ${!isPaid && netPay > 0 ? `<button class="date-step-btn" style="background:var(--brand-primary); color:#FFF; border:none;" onclick="markPayrollPaid('${w.id}')">Chốt trả</button>` : ''}
+            ${!paidRec && netPay > 0 ? `<button class="date-step-btn" style="background:var(--brand-primary); color:#FFF; border:none;" onclick="openWagePaymentSheet('${w.id}')">Chốt trả</button>` : ''}
           </div>
         </div>
       </div>
     `;
   }).join("") || `<div class="item-card" style="text-align:center; padding:20px; color:var(--text-muted);">Không có thợ trong công trình này.</div>`;
 
-  // 3. Vật tư & Nợ đại lý
+  // 3. Vật tư & Nợ đại lý (Hỗ trợ trả từng phần)
   const mats = store.materials.filter(m => matchesProject(m.projectId));
   document.getElementById("materialsHistoryList").innerHTML = mats.map(m => {
-    const total = m.qty * m.unitPrice;
+    const prj = store.projects.find(p => p.id === m.projectId);
+    const totalCost = Number(m.totalAmount || (m.qty * m.unitPrice) || 0);
+    const paidSum = (m.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+    const remaining = Math.max(0, totalCost - paidSum);
+    const isFullyPaid = remaining <= 0;
+
     return `
       <div class="item-card">
         <div class="item-card-row">
           <div>
-            <div class="item-title">${m.name} (${m.qty} ${m.unit})</div>
-            <div class="item-sub">🏪 ${m.vendor} • <strong>${formatVND(total)}</strong></div>
+            <div class="item-title">${escapeHTML(m.name)} (${m.qty} ${escapeHTML(m.unit)})</div>
+            <div class="item-sub">🏗️ ${escapeHTML(prj ? prj.name : '')} • 🏪 ${escapeHTML(m.vendor)} • Nhập: ${m.purchaseDate}</div>
+            <div class="item-sub">Tổng tiền: <strong>${formatVND(totalCost)}</strong> • Đã trả: <strong style="color:var(--brand-primary);">${formatVND(paidSum)}</strong></div>
           </div>
-          <span class="badge ${m.paidStatus === 'paid' ? 'badge-green' : 'badge-red'}">
-            ${m.paidStatus === 'paid' ? 'Đã trả tiền mặt' : 'Đang nợ đại lý'}
+          <span class="badge ${isFullyPaid ? 'badge-green' : (paidSum > 0 ? 'badge-amber' : 'badge-red')}">
+            ${isFullyPaid ? 'Đã trả hết' : (paidSum > 0 ? 'Đang trả góp' : 'Nợ 100%')}
           </span>
         </div>
-        ${m.paidStatus === 'debt' ? `
-          <button class="date-step-btn" style="margin-top:10px; width:100%; background:var(--brand-tint); color:var(--brand-primary); border-color:var(--brand-soft);" onclick="settleMaterialDebt('${m.id}')">
-            💵 Đánh dấu Đã thanh toán tiền mặt cho đại lý
-          </button>
+        ${!isFullyPaid ? `
+          <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center; background:var(--amber-soft); padding:8px 12px; border-radius:8px;">
+            <span style="font-size:13px; color:var(--amber-warn); font-weight:700;">Còn nợ đại lý: ${formatVND(remaining)}</span>
+            <button class="date-step-btn" style="min-height:36px; padding:0 12px; background:var(--brand-primary); color:#FFF; border:none;" onclick="openMaterialPaymentSheet('${m.id}')">
+              💵 Trả tiền
+            </button>
+          </div>
         ` : ''}
       </div>
     `;
   }).join("") || `<div class="item-card" style="text-align:center; padding:20px; color:var(--text-muted);">Chưa ghi nhập vật tư nào.</div>`;
 
-  // 4. Thu chi
-  const txs = store.cashTransactions.filter(t => matchesProject(t.projectId));
-  document.getElementById("cashflowHistoryList").innerHTML = txs.map(t => `
-    <div class="item-card">
-      <div class="item-card-row">
-        <div>
-          <div class="item-title">${t.category}</div>
-          <div class="item-sub">📅 ${t.date}</div>
-        </div>
-        <strong style="font-size:17px; font-variant-numeric:tabular-nums; color:${t.type === 'in' ? 'var(--brand-primary)' : 'var(--danger-debt)'}">
-          ${t.type === 'in' ? '+' : '-'}${formatVND(t.amountVnd)}
-        </strong>
-      </div>
-    </div>
-  `).join("") || `<div class="item-card" style="text-align:center; padding:20px; color:var(--text-muted);">Chưa có giao dịch thu chi nào.</div>`;
+  // 4. Sổ quỹ thu chi tổng hợp
+  renderCashflowList();
 }
 
-window.markPayrollPaid = function(workerId) {
+function renderCashflowList() {
+  const listEl = document.getElementById("cashflowHistoryList");
+  let allLedger = [];
+
+  // Thu chi thủ công
+  store.cashTransactions.forEach(t => {
+    if (!matchesProject(t.projectId)) return;
+    if (!isInSelectedPeriod(t.date)) return;
+    allLedger.push({
+      date: t.date,
+      title: t.category,
+      type: t.type,
+      amount: t.amountVnd,
+      source: "Sổ thu chi",
+      projectId: t.projectId
+    });
+  });
+
+  // Tạm ứng tiền thợ
+  store.advances.forEach(a => {
+    if (!matchesProject(a.projectId)) return;
+    if (!isInSelectedPeriod(a.date)) return;
+    const w = store.workers.find(x => x.id === a.workerId);
+    allLedger.push({
+      date: a.date,
+      title: `Thợ ${w ? w.name : ''} tạm ứng (${a.note || 'Ứng tiền'})`,
+      type: "out",
+      amount: a.amountVnd,
+      source: "Tạm ứng thợ",
+      projectId: a.projectId
+    });
+  });
+
+  // Trả tiền vật tư
+  store.materials.forEach(m => {
+    if (!matchesProject(m.projectId)) return;
+    (m.payments || []).forEach(p => {
+      if (!isInSelectedPeriod(p.paidDate)) return;
+      allLedger.push({
+        date: p.paidDate,
+        title: `Thanh toán vật tư: ${m.name} (${m.vendor})`,
+        type: "out",
+        amount: p.amount,
+        source: "Trả nợ vật tư",
+        projectId: m.projectId
+      });
+    });
+  });
+
+  // Chi trả lương quyết toán
+  store.wagePayments.forEach(wp => {
+    if (!matchesProject(wp.projectId)) return;
+    if (!isInSelectedPeriod(wp.paidDate)) return;
+    const w = store.workers.find(x => x.id === wp.workerId);
+    allLedger.push({
+      date: wp.paidDate,
+      title: `Quyết toán lương: ${w ? w.name : ''} (Kỳ ${wp.periodId})`,
+      type: "out",
+      amount: wp.netPaid,
+      source: "Lương thợ",
+      projectId: wp.projectId
+    });
+  });
+
+  // Sắp xếp ngày mới nhất lên đầu
+  allLedger.sort((a, b) => (b.date > a.date ? 1 : -1));
+
+  listEl.innerHTML = allLedger.map(item => {
+    const prj = store.projects.find(p => p.id === item.projectId);
+    return `
+      <div class="item-card">
+        <div class="item-card-row">
+          <div>
+            <div class="item-title">${escapeHTML(item.title)}</div>
+            <div class="item-sub">📅 ${item.date} • 🏗️ ${escapeHTML(prj ? prj.name : '')} • <span class="badge ${item.source === 'Sổ thu chi' ? 'badge-blue' : 'badge-amber'}">${escapeHTML(item.source)}</span></div>
+          </div>
+          <strong style="font-size:16.5px; font-variant-numeric:tabular-nums; color:${item.type === 'in' ? 'var(--brand-primary)' : 'var(--danger-debt)'}">
+            ${item.type === 'in' ? '+' : '-'}${formatVND(item.amount)}
+          </strong>
+        </div>
+      </div>
+    `;
+  }).join("") || `<div class="item-card" style="text-align:center; padding:20px; color:var(--text-muted);">Không có giao dịch dòng tiền trong kỳ này.</div>`;
+}
+
+// ================= CHI TRẢ LƯƠNG CHUẨN KẾ TOÁN =================
+window.openWagePaymentSheet = function(workerId) {
   const w = store.workers.find(x => x.id === workerId);
   if (!w) return;
-  const payKey = `${w.projectId}_${w.id}_${store.settings.selectedMonth}`;
-  store.payrollStatus[payKey] = "paid";
-  saveStore();
-  renderAll();
-  showToast(`Đã chốt trả lương cho ${w.name}!`);
+  activeWagePaymentWorkerId = workerId;
+
+  const prj = store.projects.find(p => p.id === w.projectId);
+  const periodId = store.settings.selectedMonth;
+
+  // Kiểm tra chống chi trả trùng
+  const alreadyPaid = store.wagePayments.find(
+    wp => wp.projectId === w.projectId && wp.workerId === w.id && wp.periodId === periodId
+  );
+  if (alreadyPaid) {
+    showToast("Lương kỳ này của thợ đã được quyết toán trước đó!");
+    return;
+  }
+
+  const attRecords = store.attendance.filter(
+    a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
+  );
+  const totalUnits = attRecords.reduce((s, r) => s + Number(r.units || 0), 0);
+  const grossWage = attRecords.reduce((s, r) => s + Number(r.units || 0) * Number(r.rateSnapshot || w.dailyRate), 0);
+
+  const advRecords = store.advances.filter(
+    a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
+  );
+  const totalAdv = advRecords.reduce((s, r) => s + Number(r.amountVnd || 0), 0);
+  const netPay = grossWage - totalAdv;
+
+  if (netPay <= 0) {
+    showToast("Thợ đang dư ứng " + formatVND(Math.abs(netPay)) + ". Không có số tiền cần chi trả tiền mặt!");
+    return;
+  }
+
+  const box = document.getElementById("wagePaymentReviewBox");
+  box.innerHTML = `
+    <div class="review-row"><span class="review-label">Họ tên thợ:</span><span class="review-val">${escapeHTML(w.name)}</span></div>
+    <div class="review-row"><span class="review-label">Công trình:</span><span class="review-val">${escapeHTML(prj ? prj.name : '')}</span></div>
+    <div class="review-row"><span class="review-label">Kỳ quyết toán:</span><span class="review-val">${periodId}</span></div>
+    <div class="review-row"><span class="review-label">Tổng công:</span><span class="review-val">${totalUnits} công</span></div>
+    <div class="review-row"><span class="review-label">Lương gộp:</span><span class="review-val">${formatVND(grossWage)}</span></div>
+    <div class="review-row"><span class="review-label">Khấu trừ tiền ứng:</span><span class="review-val" style="color:var(--amber-warn);">-${formatVND(totalAdv)}</span></div>
+    <div class="review-row" style="padding-top:6px; border-top:1px dashed var(--border-subtle);"><span class="review-label"><strong>THỰC CHI TIỀN MẶT:</strong></span><span class="review-val" style="font-size:18px; color:var(--brand-primary);">${formatVND(netPay)}</span></div>
+  `;
+
+  document.getElementById("wagePaymentDate").value = getTodayVN();
+  document.getElementById("sheetWagePayment").hidden = false;
 };
 
-window.settleMaterialDebt = function(matId) {
+document.getElementById("btnConfirmWagePayout").addEventListener("click", () => {
+  if (!activeWagePaymentWorkerId) return;
+  const w = store.workers.find(x => x.id === activeWagePaymentWorkerId);
+  if (!w) return;
+
+  const paidDate = document.getElementById("wagePaymentDate").value || getTodayVN();
+  const note = document.getElementById("wagePaymentNote").value.trim() || "Chi trả lương";
+  const periodId = store.settings.selectedMonth;
+
+  // Tính lại số tiền
+  const attRecords = store.attendance.filter(
+    a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
+  );
+  const grossWage = attRecords.reduce((s, r) => s + Number(r.units || 0) * Number(r.rateSnapshot || w.dailyRate), 0);
+
+  const advRecords = store.advances.filter(
+    a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
+  );
+  const totalAdv = advRecords.reduce((s, r) => s + Number(r.amountVnd || 0), 0);
+  const netPay = grossWage - totalAdv;
+
+  if (netPay <= 0) return;
+
+  store.wagePayments.push({
+    id: "WPAY_" + Date.now(),
+    projectId: w.projectId,
+    workerId: w.id,
+    periodId,
+    grossWage,
+    advanceDeducted: totalAdv,
+    netPaid: netPay,
+    paidDate,
+    note
+  });
+
+  store.auditLogs.push({
+    time: new Date().toISOString(),
+    action: `Quyết toán chi lương ${formatVND(netPay)} cho ${w.name} (kỳ ${periodId})`
+  });
+
+  saveStore();
+  document.getElementById("sheetWagePayment").hidden = true;
+  renderAll();
+  showToast(`Đã ghi nhận chi trả ${formatVND(netPay)} cho ${w.name}!`);
+});
+
+// ================= THANH TOÁN NỢ VẬT TƯ (TỪNG PHẦN HOẶC TOÀN BỘ) =================
+window.openMaterialPaymentSheet = function(matId) {
   const mat = store.materials.find(m => m.id === matId);
   if (!mat) return;
-  mat.paidStatus = "paid";
-  saveStore();
-  renderAll();
-  showToast(`Đã thanh toán nợ cho ${mat.vendor}!`);
+  activeMaterialDebtMatId = matId;
+
+  const prj = store.projects.find(p => p.id === mat.projectId);
+  const totalCost = Number(mat.totalAmount || (mat.qty * mat.unitPrice) || 0);
+  const paidSum = (mat.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+  const remaining = Math.max(0, totalCost - paidSum);
+
+  const box = document.getElementById("matPaymentReviewBox");
+  box.innerHTML = `
+    <div class="review-row"><span class="review-label">Vật tư:</span><span class="review-val">${escapeHTML(mat.name)}</span></div>
+    <div class="review-row"><span class="review-label">Đại lý:</span><span class="review-val">${escapeHTML(mat.vendor)}</span></div>
+    <div class="review-row"><span class="review-label">Công trình:</span><span class="review-val">${escapeHTML(prj ? prj.name : '')}</span></div>
+    <div class="review-row"><span class="review-label">Tổng hóa đơn:</span><span class="review-val">${formatVND(totalCost)}</span></div>
+    <div class="review-row"><span class="review-label">Đã thanh toán:</span><span class="review-val">${formatVND(paidSum)}</span></div>
+    <div class="review-row" style="padding-top:6px; border-top:1px dashed var(--border-subtle);"><span class="review-label"><strong>CÒN NỢ ĐẠI LÝ:</strong></span><span class="review-val" style="font-size:17px; color:var(--amber-warn);">${formatVND(remaining)}</span></div>
+  `;
+
+  document.getElementById("matPaymentAmount").value = remaining;
+  document.getElementById("matPaymentDate").value = getTodayVN();
+  document.getElementById("matPaymentNote").value = `Thanh toán tiền vật tư ${mat.name}`;
+  document.getElementById("sheetMaterialPayment").hidden = false;
 };
 
-// ================= KHUNG KÝ S-PEN & PALM REJECTION =================
+document.getElementById("btnConfirmMaterialPayment").addEventListener("click", () => {
+  if (!activeMaterialDebtMatId) return;
+  const mat = store.materials.find(m => m.id === activeMaterialDebtMatId);
+  if (!mat) return;
+
+  const payAmt = Number(document.getElementById("matPaymentAmount").value);
+  if (!payAmt || payAmt <= 0) {
+    showToast("Vui lòng nhập số tiền thanh toán hợp lệ!");
+    return;
+  }
+
+  const totalCost = Number(mat.totalAmount || (mat.qty * mat.unitPrice) || 0);
+  const paidSum = (mat.payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+  const remaining = Math.max(0, totalCost - paidSum);
+
+  if (payAmt > remaining) {
+    showToast("Số tiền thanh toán vượt quá số nợ còn lại (" + formatVND(remaining) + ")!");
+    return;
+  }
+
+  const paidDate = document.getElementById("matPaymentDate").value || getTodayVN();
+  const note = document.getElementById("matPaymentNote").value.trim() || "Thanh toán vật tư";
+
+  if (!Array.isArray(mat.payments)) mat.payments = [];
+  mat.payments.push({
+    paymentId: "MPAY_" + Date.now(),
+    amount: payAmt,
+    paidDate,
+    note
+  });
+
+  store.auditLogs.push({
+    time: new Date().toISOString(),
+    action: `Thanh toán ${formatVND(payAmt)} cho đại lý ${mat.vendor} (${mat.name})`
+  });
+
+  saveStore();
+  document.getElementById("sheetMaterialPayment").hidden = true;
+  renderAll();
+  showToast(`Đã thanh toán ${formatVND(payAmt)} cho đại lý ${mat.vendor}!`);
+});
+
+// ================= KHUNG KÝ S-PEN & PALM REJECTION & KÝ BÙ =================
 const spenCanvas = document.getElementById("spenCanvas");
 const spenCtx = spenCanvas ? spenCanvas.getContext("2d") : null;
 let isDrawing = false;
 let hasSignatureInk = false;
 let activePointerType = null;
+
+const suppCanvas = document.getElementById("spenCanvasSupplemental");
+const suppCtx = suppCanvas ? suppCanvas.getContext("2d") : null;
+let isSuppDrawing = false;
+let hasSuppInk = false;
+let activeSuppPointerType = null;
+
+function setupCanvasPointerEvents(canvas, ctx, onDrawStart, onDrawing, onDrawEnd) {
+  if (!canvas || !ctx) return;
+
+  canvas.addEventListener("pointerdown", e => {
+    try {
+      canvas.setPointerCapture(e.pointerId);
+    } catch (err) {}
+    onDrawStart(e);
+  });
+
+  canvas.addEventListener("pointermove", e => {
+    onDrawing(e);
+  });
+
+  const stop = e => {
+    try {
+      if (canvas.hasPointerCapture(e.pointerId)) {
+        canvas.releasePointerCapture(e.pointerId);
+      }
+    } catch (err) {}
+    onDrawEnd(e);
+  };
+
+  canvas.addEventListener("pointerup", stop);
+  canvas.addEventListener("pointercancel", stop);
+}
 
 function initSpenCanvas() {
   if (!spenCtx) return;
@@ -693,47 +1206,152 @@ function initSpenCanvas() {
   spenCtx.lineCap = "round";
   spenCtx.lineJoin = "round";
   hasSignatureInk = false;
+  activePointerType = null;
+}
+
+function initSuppCanvas() {
+  if (!suppCtx) return;
+  suppCtx.fillStyle = "#FFFFFF";
+  suppCtx.fillRect(0, 0, suppCanvas.width, suppCanvas.height);
+  suppCtx.strokeStyle = "#18312E";
+  suppCtx.lineWidth = 2.8;
+  suppCtx.lineCap = "round";
+  suppCtx.lineJoin = "round";
+  hasSuppInk = false;
+  activeSuppPointerType = null;
 }
 
 if (spenCanvas) {
-  spenCanvas.addEventListener("pointerdown", e => {
-    if (e.pointerType === "pen") {
-      activePointerType = "pen";
-      document.getElementById("spenStatusText").textContent = "🖊️ Đang nhận nét S-Pen (Đã khóa tỳ tay)";
-    } else if (activePointerType === "pen" && e.pointerType === "touch") {
-      return; // Chặn cạnh bàn tay tỳ vào màn hình khi cầm bút
+  setupCanvasPointerEvents(
+    spenCanvas,
+    spenCtx,
+    e => {
+      if (e.pointerType === "pen") {
+        activePointerType = "pen";
+        document.getElementById("spenStatusText").textContent = "🖊️ Đang nhận nét S-Pen (Đã khóa tỳ tay)";
+      } else if (activePointerType === "pen" && e.pointerType === "touch") {
+        return; // Palm rejection
+      }
+      isDrawing = true;
+      hasSignatureInk = true;
+      const rect = spenCanvas.getBoundingClientRect();
+      const scaleX = spenCanvas.width / rect.width;
+      const scaleY = spenCanvas.height / rect.height;
+      spenCtx.beginPath();
+      spenCtx.moveTo((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+    },
+    e => {
+      if (!isDrawing) return;
+      if (activePointerType === "pen" && e.pointerType === "touch") return;
+      const rect = spenCanvas.getBoundingClientRect();
+      const scaleX = spenCanvas.width / rect.width;
+      const scaleY = spenCanvas.height / rect.height;
+      spenCtx.lineTo((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+      spenCtx.stroke();
+    },
+    () => {
+      isDrawing = false;
     }
-
-    isDrawing = true;
-    hasSignatureInk = true;
-    const rect = spenCanvas.getBoundingClientRect();
-    const scaleX = spenCanvas.width / rect.width;
-    const scaleY = spenCanvas.height / rect.height;
-    spenCtx.beginPath();
-    spenCtx.moveTo((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
-  });
-
-  spenCanvas.addEventListener("pointermove", e => {
-    if (!isDrawing) return;
-    if (activePointerType === "pen" && e.pointerType === "touch") return;
-    const rect = spenCanvas.getBoundingClientRect();
-    const scaleX = spenCanvas.width / rect.width;
-    const scaleY = spenCanvas.height / rect.height;
-    spenCtx.lineTo((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
-    spenCtx.stroke();
-  });
-
-  window.addEventListener("pointerup", () => {
-    isDrawing = false;
-  });
+  );
 
   document.getElementById("btnClearSignature").addEventListener("click", () => {
-    activePointerType = null;
     initSpenCanvas();
     document.getElementById("spenStatusText").textContent = "🖊️ Sẵn sàng nhận bút S-Pen hoặc ngón tay";
   });
 }
 
+if (suppCanvas) {
+  setupCanvasPointerEvents(
+    suppCanvas,
+    suppCtx,
+    e => {
+      if (e.pointerType === "pen") {
+        activeSuppPointerType = "pen";
+        document.getElementById("suppSignStatusText").textContent = "🖊️ Đang nhận nét S-Pen (Đã khóa tỳ tay)";
+      } else if (activeSuppPointerType === "pen" && e.pointerType === "touch") {
+        return; // Palm rejection
+      }
+      isSuppDrawing = true;
+      hasSuppInk = true;
+      const rect = suppCanvas.getBoundingClientRect();
+      const scaleX = suppCanvas.width / rect.width;
+      const scaleY = suppCanvas.height / rect.height;
+      suppCtx.beginPath();
+      suppCtx.moveTo((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+    },
+    e => {
+      if (!isSuppDrawing) return;
+      if (activeSuppPointerType === "pen" && e.pointerType === "touch") return;
+      const rect = suppCanvas.getBoundingClientRect();
+      const scaleX = suppCanvas.width / rect.width;
+      const scaleY = suppCanvas.height / rect.height;
+      suppCtx.lineTo((e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY);
+      suppCtx.stroke();
+    },
+    () => {
+      isSuppDrawing = false;
+    }
+  );
+
+  document.getElementById("btnSuppClearSignature").addEventListener("click", () => {
+    initSuppCanvas();
+    document.getElementById("suppSignStatusText").textContent = "🖊️ Sẵn sàng nhận bút S-Pen hoặc ngón tay";
+  });
+}
+
+// ================= KÝ BÙ PHIẾU CHƯA KÝ =================
+window.openSupplementalSign = function(advanceId) {
+  const adv = store.advances.find(a => a.id === advanceId);
+  if (!adv) return;
+  activeSupplementalAdvanceId = advanceId;
+
+  const w = store.workers.find(x => x.id === adv.workerId);
+  const prj = store.projects.find(p => p.id === adv.projectId);
+
+  const box = document.getElementById("suppSignInfoBox");
+  box.innerHTML = `
+    <div class="review-row"><span class="review-label">Thợ nhận tiền:</span><span class="review-val">${escapeHTML(w ? w.name : '')}</span></div>
+    <div class="review-row"><span class="review-label">Công trình:</span><span class="review-val">${escapeHTML(prj ? prj.name : '')}</span></div>
+    <div class="review-row"><span class="review-label">Số tiền:</span><span class="review-val" style="color:var(--amber-warn); font-size:16px;">${formatVND(adv.amountVnd)}</span></div>
+    <div class="review-row"><span class="review-label">Ngày ứng:</span><span class="review-val">${adv.date}</span></div>
+    <div class="review-row"><span class="review-label">Ghi chú:</span><span class="review-val">${escapeHTML(adv.note || '')}</span></div>
+  `;
+
+  document.getElementById("suppSignLiveBanner").textContent =
+    `Ký bổ sung: ${w ? w.name : 'Thợ'} — ${formatVND(adv.amountVnd)}`;
+
+  initSuppCanvas();
+  document.getElementById("sheetSupplementalSign").hidden = false;
+};
+
+document.getElementById("btnSaveSupplementalSign").addEventListener("click", () => {
+  if (!activeSupplementalAdvanceId) return;
+  const adv = store.advances.find(a => a.id === activeSupplementalAdvanceId);
+  if (!adv) return;
+
+  if (!hasSuppInk) {
+    showToast("Vui lòng ký tên vào khung trước khi lưu!");
+    return;
+  }
+
+  const nowIso = new Date().toISOString();
+  adv.signedStatus = "signed";
+  adv.signatureDataUrl = suppCanvas.toDataURL("image/png");
+  adv.signedAt = nowIso;
+  adv.signatureHash = `${adv.projectId}|${adv.workerId}|${adv.amountVnd}|${adv.date}|${nowIso}`;
+
+  store.auditLogs.push({
+    time: nowIso,
+    action: `Ký bổ sung phiếu ứng tiền ${formatVND(adv.amountVnd)} của thợ ${adv.workerId}`
+  });
+
+  saveStore();
+  document.getElementById("sheetSupplementalSign").hidden = true;
+  renderAll();
+  showToast("Đã bổ sung chữ ký S-Pen thành công!");
+});
+
+// ================= FORM TẠM ỨNG TIỀN MỚI =================
 function updateAdvanceMoneyUI() {
   document.getElementById("advAmountFormatted").textContent = formatVND(currentAdvanceAmount);
   document.getElementById("advAmountWords").textContent = readMoneyVietnamese(currentAdvanceAmount);
@@ -743,15 +1361,44 @@ function updateAdvanceMoneyUI() {
     `Ký nhận ứng tiền: ${wName} — ${formatVND(currentAdvanceAmount)}`;
 }
 
+function populateFormProjectSelects() {
+  const activeProjects = store.projects.filter(p => p.status === "active");
+  const optionsHtml = activeProjects.map(p =>
+    `<option value="${p.id}" ${p.id === store.settings.selectedProjectId ? 'selected' : ''}>${escapeHTML(p.name)}</option>`
+  ).join("");
+
+  ["advProjectSelect", "matProjectSelect", "newWorkerProjectSelect", "cashInProjectSelect", "cashOutProjectSelect"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = optionsHtml;
+  });
+
+  updateAdvanceWorkerOptions();
+}
+
+function updateAdvanceWorkerOptions() {
+  const prjId = document.getElementById("advProjectSelect")?.value || store.settings.selectedProjectId;
+  const workers = store.workers.filter(w => prjId === "ALL" ? true : w.projectId === prjId);
+  const sel = document.getElementById("advWorkerSelect");
+  if (sel) {
+    sel.innerHTML = workers.map(w => `<option value="${w.id}">${escapeHTML(w.name)} (${escapeHTML(w.role)})</option>`).join("") ||
+      `<option value="">(Chưa có thợ nào trong công trình này)</option>`;
+  }
+}
+
+document.getElementById("advProjectSelect")?.addEventListener("change", () => {
+  updateAdvanceWorkerOptions();
+  updateAdvanceMoneyUI();
+});
+
 function openAdvanceSheet() {
-  const workers = store.workers.filter(w => matchesProject(w.projectId));
-  if (workers.length === 0) {
-    showToast("Vui lòng thêm thợ vào công trình trước khi tạm ứng!");
+  populateFormProjectSelects();
+  const workerSel = document.getElementById("advWorkerSelect");
+  if (!workerSel || !workerSel.value) {
+    showToast("Vui lòng tạo thợ cho công trình trước khi tạm ứng!");
     return;
   }
-  const sel = document.getElementById("advWorkerSelect");
-  sel.innerHTML = workers.map(w => `<option value="${w.id}">${w.name} (${w.role})</option>`).join("");
   currentAdvanceAmount = 500000;
+  document.getElementById("advDateInput").value = getTodayVN();
   document.getElementById("chkAllowUnsigned").checked = false;
   initSpenCanvas();
   updateAdvanceMoneyUI();
@@ -765,7 +1412,6 @@ document.getElementById("btnQuickAdvance").addEventListener("click", () => {
 });
 document.getElementById("advWorkerSelect").addEventListener("change", updateAdvanceMoneyUI);
 
-// Nút cộng tiền nhanh
 document.querySelectorAll(".money-chip").forEach(chip => {
   chip.addEventListener("click", () => {
     currentAdvanceAmount += Number(chip.dataset.add);
@@ -773,7 +1419,6 @@ document.querySelectorAll(".money-chip").forEach(chip => {
   });
 });
 
-// Bàn phím số công trường (Numpad)
 document.querySelectorAll(".custom-numpad button").forEach(btn => {
   btn.addEventListener("click", () => {
     const key = btn.dataset.digit;
@@ -793,7 +1438,10 @@ document.querySelectorAll(".custom-numpad button").forEach(btn => {
 document.getElementById("btnSaveAdvance").addEventListener("click", () => {
   const workerId = document.getElementById("advWorkerSelect").value;
   const w = store.workers.find(x => x.id === workerId);
-  if (!w) return;
+  if (!w) {
+    showToast("Vui lòng chọn thợ!");
+    return;
+  }
 
   const allowUnsigned = document.getElementById("chkAllowUnsigned").checked;
   if (!hasSignatureInk && !allowUnsigned) {
@@ -801,19 +1449,21 @@ document.getElementById("btnSaveAdvance").addEventListener("click", () => {
     return;
   }
 
-  const today = store.settings.selectedDate;
+  const advDate = document.getElementById("advDateInput").value || getTodayVN();
   const sigUrl = hasSignatureInk ? spenCanvas.toDataURL("image/png") : null;
+  const nowIso = new Date().toISOString();
 
   store.advances.push({
     id: "ADV_" + Date.now(),
     projectId: w.projectId,
     workerId: w.id,
     amountVnd: currentAdvanceAmount,
-    date: today,
+    date: advDate,
     note: document.getElementById("advNoteInput").value.trim() || "Tạm ứng tiền",
     signedStatus: hasSignatureInk ? "signed" : "unsigned",
     signatureDataUrl: sigUrl,
-    signatureHash: `${w.projectId}|${w.id}|${currentAdvanceAmount}|${today}`
+    signedAt: hasSignatureInk ? nowIso : null,
+    signatureHash: hasSignatureInk ? `${w.projectId}|${w.id}|${currentAdvanceAmount}|${advDate}|${nowIso}` : null
   });
 
   saveStore();
@@ -830,10 +1480,10 @@ window.openVisualPayslip = function(workerId) {
 
   const prj = store.projects.find(p => p.id === w.projectId);
   const attRecords = store.attendance.filter(
-    a => a.workerId === w.id && isInSelectedPeriod(a.date)
+    a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
   );
   const advRecords = store.advances.filter(
-    a => a.workerId === w.id && isInSelectedPeriod(a.date)
+    a => a.workerId === w.id && a.projectId === w.projectId && isInSelectedPeriod(a.date)
   );
 
   const totalUnits = attRecords.reduce((s, r) => s + Number(r.units || 0), 0);
@@ -844,11 +1494,10 @@ window.openVisualPayslip = function(workerId) {
   const canvas = document.getElementById("payslipRenderCanvas");
   const ctx = canvas.getContext("2d");
 
-  // Nền trắng sạch
   ctx.fillStyle = "#FFFFFF";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Header xanh công trình chuẩn PRD
+  // Header xanh công trình
   ctx.fillStyle = "#117D70";
   ctx.fillRect(0, 0, canvas.width, 110);
   ctx.fillStyle = "#FFFFFF";
@@ -878,7 +1527,7 @@ window.openVisualPayslip = function(workerId) {
   ctx.fillStyle = "#A36A16";
   ctx.fillText(`3. Tổng tạm ứng: -${formatVND(totalAdv)} (${advRecords.length} lần)`, 50, 325);
 
-  // Chi tiết các lần ứng kèm trạng thái ký
+  // Chi tiết tạm ứng
   ctx.fillStyle = "#18312E";
   ctx.font = "bold 17px sans-serif";
   ctx.fillText("Chi tiết các khoản tạm ứng:", 30, 380);
@@ -888,22 +1537,17 @@ window.openVisualPayslip = function(workerId) {
     ctx.font = "16px sans-serif";
     ctx.fillStyle = "#7E9592";
     ctx.fillText("Không có khoản tạm ứng nào trong kỳ này.", 50, yPos);
-    yPos += 30;
   } else {
     advRecords.slice(0, 4).forEach(adv => {
       ctx.font = "15px sans-serif";
       ctx.fillStyle = "#18312E";
       const statusTxt = adv.signedStatus === "signed" ? "[Đã ký S-Pen]" : "[Chưa ký]";
-      ctx.fillText(
-        `• Ngày ${adv.date}: ${formatVND(adv.amountVnd)} (${adv.note}) ${statusTxt}`,
-        40,
-        yPos
-      );
+      ctx.fillText(`• Ngày ${adv.date}: ${formatVND(adv.amountVnd)} (${adv.note}) ${statusTxt}`, 40, yPos);
       yPos += 30;
     });
   }
 
-  // Khung thực lĩnh nổi bật
+  // Khung thực lĩnh
   ctx.fillStyle = "#D9F3EB";
   ctx.fillRect(30, 650, canvas.width - 60, 120);
   ctx.strokeStyle = "#117D70";
@@ -914,7 +1558,7 @@ window.openVisualPayslip = function(workerId) {
   ctx.font = "bold 18px sans-serif";
   ctx.fillText("THỰC LĨNH CÒN NHẬN:", 50, 690);
   ctx.font = "bold 36px sans-serif";
-  ctx.fillText(formatVND(netPay), 50, 740);
+  ctx.fillText(netPay >= 0 ? formatVND(netPay) : "Dư ứng " + formatVND(Math.abs(netPay)), 50, 740);
 
   document.getElementById("sheetPayslipPreview").hidden = false;
 };
@@ -977,8 +1621,8 @@ function renderProjectsTab() {
       <div class="item-card">
         <div class="item-card-row">
           <div>
-            <div class="item-title">${p.name}</div>
-            <div class="item-sub">👤 Chủ: ${p.owner} • 📍 ${p.location}</div>
+            <div class="item-title">${escapeHTML(p.name)}</div>
+            <div class="item-sub">👤 Chủ: ${escapeHTML(p.owner)} • 📍 ${escapeHTML(p.location)}</div>
             <div class="item-sub">📅 Khởi công: ${p.startDate} • 👷 ${wCount} thợ</div>
           </div>
           <span class="badge ${p.status === 'active' ? 'badge-green' : 'badge-amber'}">
@@ -1031,8 +1675,8 @@ function openProjectPicker() {
       <div class="item-card" onclick="selectProject('${p.id}')" style="cursor:pointer; ${active ? 'border-color:var(--brand-primary); border-width:2px;' : ''}">
         <div class="item-card-row">
           <div>
-            <div class="item-title">${p.name}</div>
-            <div class="item-sub">${p.location} • Chủ: ${p.owner}</div>
+            <div class="item-title">${escapeHTML(p.name)}</div>
+            <div class="item-sub">${escapeHTML(p.location)} • Chủ: ${escapeHTML(p.owner)}</div>
           </div>
           <span class="badge ${p.status === 'active' ? 'badge-green' : 'badge-amber'}">
             ${p.status === 'active' ? 'Đang làm' : 'Đã xong'}
@@ -1046,15 +1690,14 @@ function openProjectPicker() {
 }
 
 document.getElementById("btnOpenProjectSheet").addEventListener("click", openProjectPicker);
-document.getElementById("btnFloatingProject").addEventListener("click", openProjectPicker);
 document.getElementById("btnPickProjectForAtt").addEventListener("click", openProjectPicker);
 
-// Bottom Sheet Tạo công trình mới (Không dùng prompt)
+// Tạo công trình mới
 document.getElementById("btnOpenNewProjectSheet")?.addEventListener("click", () => {
   document.getElementById("newPrjName").value = "";
   document.getElementById("newPrjOwner").value = "";
   document.getElementById("newPrjLocation").value = "";
-  document.getElementById("newPrjStartDate").value = new Date().toISOString().slice(0, 10);
+  document.getElementById("newPrjStartDate").value = getTodayVN();
   document.getElementById("sheetNewProjectForm").hidden = false;
 });
 
@@ -1066,7 +1709,7 @@ document.getElementById("btnSubmitNewProject")?.addEventListener("click", () => 
   }
   const owner = document.getElementById("newPrjOwner").value.trim() || "Chủ nhà";
   const location = document.getElementById("newPrjLocation").value.trim() || "Cần Thơ";
-  const startDate = document.getElementById("newPrjStartDate").value || new Date().toISOString().slice(0, 10);
+  const startDate = document.getElementById("newPrjStartDate").value || getTodayVN();
 
   const newPrj = {
     id: "PRJ_" + Date.now(),
@@ -1084,8 +1727,9 @@ document.getElementById("btnSubmitNewProject")?.addEventListener("click", () => 
   showToast(`Đã tạo công trình "${name}"!`);
 });
 
-// Bottom Sheet Thêm thợ mới (Không dùng prompt)
+// Thêm thợ mới
 document.getElementById("btnOpenAddWorkerModal")?.addEventListener("click", () => {
+  populateFormProjectSelects();
   document.getElementById("newWorkerName").value = "";
   document.getElementById("newWorkerRate").value = "450000";
   document.getElementById("sheetNewWorkerForm").hidden = false;
@@ -1097,12 +1741,17 @@ document.getElementById("btnSubmitNewWorker")?.addEventListener("click", () => {
     showToast("Vui lòng nhập họ tên thợ!");
     return;
   }
+  const prjId = document.getElementById("newWorkerProjectSelect").value;
+  if (!prjId) {
+    showToast("Vui lòng chọn công trình phân công cho thợ!");
+    return;
+  }
+
   const role = document.getElementById("newWorkerRole").value;
   const rate = Number(document.getElementById("newWorkerRate").value) || 450000;
-  const prjId = store.settings.selectedProjectId === "ALL" ? store.projects[0].id : store.settings.selectedProjectId;
 
   store.workers.push({
-    id: "W" + (store.workers.length + 1),
+    id: "W" + (store.workers.length + 1) + "_" + Date.now().toString(36).slice(-4),
     name,
     role,
     dailyRate: rate,
@@ -1114,19 +1763,26 @@ document.getElementById("btnSubmitNewWorker")?.addEventListener("click", () => {
   showToast(`Đã thêm thợ "${name}"!`);
 });
 
-// Thu chi nhanh (Không dùng prompt)
+// Thu chi tiền mặt
 document.getElementById("btnOpenCashInSheet")?.addEventListener("click", () => {
+  populateFormProjectSelects();
+  document.getElementById("cashInDate").value = getTodayVN();
   document.getElementById("sheetCashInForm").hidden = false;
 });
 
 document.getElementById("btnSubmitCashIn")?.addEventListener("click", () => {
+  const prjId = document.getElementById("cashInProjectSelect").value;
+  if (!prjId) {
+    showToast("Vui lòng chọn công trình!");
+    return;
+  }
   const amount = Number(document.getElementById("cashInAmount").value);
   if (!amount || amount <= 0) {
     showToast("Vui lòng nhập số tiền hợp lệ!");
     return;
   }
+  const date = document.getElementById("cashInDate").value || getTodayVN();
   const note = document.getElementById("cashInNote").value.trim() || "Chủ nhà tạm ứng";
-  const prjId = store.settings.selectedProjectId === "ALL" ? store.projects[0].id : store.settings.selectedProjectId;
 
   store.cashTransactions.push({
     id: "CSH_" + Date.now(),
@@ -1134,7 +1790,7 @@ document.getElementById("btnSubmitCashIn")?.addEventListener("click", () => {
     type: "in",
     amountVnd: amount,
     category: note,
-    date: store.settings.selectedDate
+    date
   });
   saveStore();
   document.getElementById("sheetCashInForm").hidden = true;
@@ -1143,17 +1799,24 @@ document.getElementById("btnSubmitCashIn")?.addEventListener("click", () => {
 });
 
 document.getElementById("btnOpenCashOutSheet")?.addEventListener("click", () => {
+  populateFormProjectSelects();
+  document.getElementById("cashOutDate").value = getTodayVN();
   document.getElementById("sheetCashOutForm").hidden = false;
 });
 
 document.getElementById("btnSubmitCashOut")?.addEventListener("click", () => {
+  const prjId = document.getElementById("cashOutProjectSelect").value;
+  if (!prjId) {
+    showToast("Vui lòng chọn công trình!");
+    return;
+  }
   const amount = Number(document.getElementById("cashOutAmount").value);
   if (!amount || amount <= 0) {
     showToast("Vui lòng nhập số tiền chi!");
     return;
   }
+  const date = document.getElementById("cashOutDate").value || getTodayVN();
   const note = document.getElementById("cashOutNote").value.trim() || "Chi phí phát sinh";
-  const prjId = store.settings.selectedProjectId === "ALL" ? store.projects[0].id : store.settings.selectedProjectId;
 
   store.cashTransactions.push({
     id: "CSH_" + Date.now(),
@@ -1161,7 +1824,7 @@ document.getElementById("btnSubmitCashOut")?.addEventListener("click", () => {
     type: "out",
     amountVnd: amount,
     category: note,
-    date: store.settings.selectedDate
+    date
   });
   saveStore();
   document.getElementById("sheetCashOutForm").hidden = true;
@@ -1171,20 +1834,36 @@ document.getElementById("btnSubmitCashOut")?.addEventListener("click", () => {
 
 // Nhập vật tư
 document.getElementById("btnOpenMaterialSheet").addEventListener("click", () => {
+  populateFormProjectSelects();
+  document.getElementById("matPurchaseDate").value = getTodayVN();
   document.getElementById("sheetMaterialForm").hidden = false;
 });
 
 document.getElementById("btnSaveMaterial").addEventListener("click", () => {
-  const prjId = store.settings.selectedProjectId === "ALL"
-    ? store.projects[0].id
-    : store.settings.selectedProjectId;
+  const prjId = document.getElementById("matProjectSelect").value;
+  if (!prjId) {
+    showToast("Vui lòng chọn công trình!");
+    return;
+  }
 
   const name = document.getElementById("matNameInput").value.trim() || "Vật tư xây dựng";
   const qty = Number(document.getElementById("matQtyInput").value) || 1;
   const unit = document.getElementById("matUnitSelect").value;
   const price = Number(document.getElementById("matPriceInput").value) || 0;
+  const total = qty * price;
   const vendor = document.getElementById("matVendorInput").value.trim() || "Đại lý VLXD";
-  const status = document.getElementById("matPaidStatus").value;
+  const pDate = document.getElementById("matPurchaseDate").value || getTodayVN();
+  const initPaid = document.getElementById("matPaidStatus").value;
+
+  let initialPayments = [];
+  if (initPaid === "paid") {
+    initialPayments.push({
+      paymentId: "MPAY_" + Date.now(),
+      amount: total,
+      paidDate: pDate,
+      note: "Thanh toán tiền mặt ngay lúc nhận hàng"
+    });
+  }
 
   store.materials.push({
     id: "MAT_" + Date.now(),
@@ -1193,32 +1872,114 @@ document.getElementById("btnSaveMaterial").addEventListener("click", () => {
     qty,
     unit,
     unitPrice: price,
+    totalAmount: total,
     vendor,
-    paidStatus: status,
-    date: store.settings.selectedDate
+    purchaseDate: pDate,
+    payments: initialPayments
   });
+
   saveStore();
   document.getElementById("sheetMaterialForm").hidden = true;
   renderAll();
   showToast(`Đã lưu phiếu vật tư: ${name}!`);
 });
 
-// Xuất file Excel .xlsx thật đa sheet
+// ================= XUẤT EXCEL .XLSX ĐA SHEET & NHẬP SAO LƯU =================
 document.getElementById("btnExportExcel").addEventListener("click", () => {
   if (typeof XLSX === "undefined") {
     exportBackupJson();
     return;
   }
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.projects), "CongTrinh");
+
+  // 1. Sheet Tổng quan tồn quỹ
+  const fin = calculateFinancials();
+  const summaryData = [
+    { Chỉ_Tiêu: "Tồn quỹ tiền mặt lũy kế", Giá_Trị_VND: fin.cumulativeBalance },
+    { Chỉ_Tiêu: "Tổng thu trong kỳ", Giá_Trị_VND: fin.periodCashIn },
+    { Chỉ_Tiêu: "Tổng chi trong kỳ", Giá_Trị_VND: fin.periodCashOut },
+    { Chỉ_Tiêu: "Tổng ngày công trong kỳ", Giá_Trị_VND: fin.periodAttendanceUnits },
+    { Chỉ_Tiêu: "Tổng tiền ứng trong kỳ", Giá_Trị_VND: fin.periodAdvanceTotal },
+    { Chỉ_Tiêu: "Công nợ vật tư còn mở", Giá_Trị_VND: fin.openMaterialDebt }
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summaryData), "TongQuan_TonQuy");
+
+  // 2. Sheet Danh sách công trình
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.projects), "DanhSach_CongTrinh");
+
+  // 3. Sheet Danh sách thợ
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.workers), "DoiTho");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.attendance), "ChamCong");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.advances.map(a => ({
-    ...a,
-    signatureDataUrl: a.signedStatus === "signed" ? "[Có chữ ký S-Pen]" : "Chưa ký"
-  }))), "TamUng");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.materials), "VatTu");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.cashTransactions), "ThuChi");
+
+  // 4. Sheet Chấm công
+  const attExport = store.attendance.map(a => {
+    const w = store.workers.find(x => x.id === a.workerId);
+    const p = store.projects.find(x => x.id === a.projectId);
+    return {
+      Ngay: a.date,
+      CongTrinh: p ? p.name : a.projectId,
+      Tho: w ? w.name : a.workerId,
+      SoCong: a.units,
+      DonGiaSnapshot: a.rateSnapshot,
+      ThanhTien: (Number(a.units || 0) * Number(a.rateSnapshot || 0))
+    };
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(attExport), "ChamCong");
+
+  // 5. Sheet Tạm ứng
+  const advExport = store.advances.map(a => {
+    const w = store.workers.find(x => x.id === a.workerId);
+    const p = store.projects.find(x => x.id === a.projectId);
+    return {
+      Ngay: a.date,
+      CongTrinh: p ? p.name : a.projectId,
+      Tho: w ? w.name : a.workerId,
+      SoTienUng: a.amountVnd,
+      LyDo: a.note,
+      TrangThaiKy: a.signedStatus === "signed" ? "Đã ký S-Pen" : "Chưa ký",
+      MaHash: a.signatureHash || ""
+    };
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(advExport), "TamUng_ChuKy");
+
+  // 6. Sheet Bảng lương quyết toán
+  const wageExport = store.wagePayments.map(wp => {
+    const w = store.workers.find(x => x.id === wp.workerId);
+    const p = store.projects.find(x => x.id === wp.projectId);
+    return {
+      KyLuong: wp.periodId,
+      CongTrinh: p ? p.name : wp.projectId,
+      Tho: w ? w.name : wp.workerId,
+      LuongGop: wp.grossWage,
+      DaKhauTruUng: wp.advanceDeducted,
+      ThucLinhDaChi: wp.netPaid,
+      NgayChiTien: wp.paidDate,
+      GhiChu: wp.note
+    };
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(wageExport), "BangLuong_QuyetToan");
+
+  // 7. Sheet Vật tư và Công nợ
+  const matExport = store.materials.map(m => {
+    const p = store.projects.find(x => x.id === m.projectId);
+    const total = Number(m.totalAmount || (m.qty * m.unitPrice) || 0);
+    const paidSum = (m.payments || []).reduce((s, pay) => s + Number(pay.amount || 0), 0);
+    return {
+      NgayNhap: m.purchaseDate,
+      CongTrinh: p ? p.name : m.projectId,
+      VatTu: m.name,
+      SoLuong: m.qty,
+      DonVi: m.unit,
+      DonGia: m.unitPrice,
+      TongTien: total,
+      DaThanhToan: paidSum,
+      ConNo: Math.max(0, total - paidSum),
+      DaiLy: m.vendor
+    };
+  });
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(matExport), "VatTu_CongNo");
+
+  // 8. Sổ quỹ tiền mặt chi tiết
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(store.cashTransactions), "SoQuy_TienMat");
 
   XLSX.writeFile(wb, `So_Cong_Trinh_GridCraft_${store.settings.selectedDate}.xlsx`);
   showToast("Đã xuất file Excel .xlsx thành công!");
@@ -1234,6 +1995,43 @@ function exportBackupJson() {
 }
 
 document.getElementById("btnBackupRestore").addEventListener("click", exportBackupJson);
+
+// Nhập sao lưu (Import Backup JSON)
+const backupInput = document.getElementById("inputBackupFile");
+document.getElementById("btnImportBackup")?.addEventListener("click", () => {
+  backupInput.click();
+});
+
+backupInput?.addEventListener("change", e => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = evt => {
+    try {
+      const parsed = JSON.parse(evt.target.result);
+      if (!parsed || typeof parsed !== "object") throw new Error("File không đúng cấu trúc!");
+      if (!Array.isArray(parsed.projects) || !Array.isArray(parsed.workers)) {
+        throw new Error("Tệp sao lưu thiếu danh mục công trình hoặc đội thợ!");
+      }
+
+      showCustomConfirm(
+        "Khôi phục dữ liệu từ sao lưu?",
+        `Tệp sao lưu chứa ${parsed.projects.length} công trình và ${parsed.workers.length} thợ. Dữ liệu hiện tại sẽ được cập nhật. Bạn có chắc chắn muốn khôi phục?`,
+        () => {
+          store = migrateStore(parsed);
+          saveStore();
+          renderAll();
+          showToast("Đã khôi phục dữ liệu sao lưu thành công!");
+        }
+      );
+    } catch (err) {
+      alert("Lỗi nhập tệp sao lưu: " + err.message);
+    }
+    backupInput.value = "";
+  };
+  reader.readAsText(file);
+});
 
 // ================= CUSTOM CONFIRM DIALOG & TOAST =================
 let confirmCallback = null;
@@ -1290,9 +2088,18 @@ document.querySelectorAll(".subtab-pill").forEach(pill => {
   });
 });
 
+// Đóng sheet khi bấm nút close hoặc click vào backdrop bên ngoài sheet
 document.querySelectorAll("[data-close]").forEach(btn => {
   btn.addEventListener("click", () => {
     document.getElementById(btn.dataset.close).hidden = true;
+  });
+});
+
+document.querySelectorAll(".sheet-backdrop").forEach(bd => {
+  bd.addEventListener("click", e => {
+    if (e.target === bd) {
+      bd.hidden = true;
+    }
   });
 });
 
@@ -1314,9 +2121,13 @@ document.getElementById("btnQuickAttendance").addEventListener("click", () => {
 
 // Chuyển ngày chấm công
 function stepDate(days) {
-  const d = new Date(store.settings.selectedDate);
-  d.setDate(d.getDate() + days);
-  store.settings.selectedDate = d.toISOString().slice(0, 10);
+  const [y, m, d] = store.settings.selectedDate.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  const yr = dt.getFullYear();
+  const mo = String(dt.getMonth() + 1).padStart(2, "0");
+  const da = String(dt.getDate()).padStart(2, "0");
+  store.settings.selectedDate = `${yr}-${mo}-${da}`;
   saveStore();
   renderAll();
 }
@@ -1332,11 +2143,20 @@ document.getElementById("attendanceDateInput").addEventListener("change", e => {
 
 // Chuyển kỳ thời gian (< / >)
 function stepPeriod(delta) {
-  const [y, m] = store.settings.selectedMonth.split("-").map(Number);
-  let newD = new Date(y, m - 1 + delta, 1);
-  const newY = newD.getFullYear();
-  const newM = String(newD.getMonth() + 1).padStart(2, '0');
-  store.settings.selectedMonth = `${newY}-${newM}`;
+  const mode = store.settings.periodMode;
+  if (mode === "month") {
+    const [y, m] = store.settings.selectedMonth.split("-").map(Number);
+    let newD = new Date(y, m - 1 + delta, 1);
+    const newY = newD.getFullYear();
+    const newM = String(newD.getMonth() + 1).padStart(2, "0");
+    store.settings.selectedMonth = `${newY}-${newM}`;
+  } else if (mode === "year") {
+    const [y, m] = store.settings.selectedMonth.split("-").map(Number);
+    store.settings.selectedMonth = `${y + delta}-${String(m).padStart(2, "0")}`;
+  } else if (mode === "week") {
+    stepDate(delta * 7);
+    return;
+  }
   saveStore();
   renderAll();
 }
@@ -1363,5 +2183,14 @@ document.querySelectorAll(".filter-chips .chip").forEach(chip => {
 
 document.getElementById("projectSearchInput")?.addEventListener("input", renderProjectsTab);
 
-// Khởi chạy
+// Khởi tạo IndexedDB ở chế độ ngầm và render ban đầu
+AppStorage.initDB().then(() => {
+  AppStorage.loadFromIndexedDB().then(idbStore => {
+    if (idbStore) {
+      store = idbStore;
+      renderAll();
+    }
+  });
+});
+
 renderAll();
